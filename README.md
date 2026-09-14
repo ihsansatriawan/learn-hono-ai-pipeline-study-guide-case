@@ -11,12 +11,13 @@ The domain language lives in [CONTEXT.md](./CONTEXT.md); decisions that are not 
 code are explained in [docs/adr/](./docs/adr/); the full test scenarios with their real results are
 in [docs/TEST-CASES.md](./docs/TEST-CASES.md).
 
-Two diagrams explain this system faster than prose does — open the files in a browser:
+Three diagrams explain this system faster than prose does — open the files in a browser:
 
 | Diagram | Answers |
 | --- | --- |
 | [docs/diagrams/architecture.html](./docs/diagrams/architecture.html) | Which components exist and how they connect |
 | [docs/diagrams/happy-flow.html](./docs/diagrams/happy-flow.html) | What happens, in order, from `POST /jobs` to reading the guide |
+| [docs/diagrams/reconciler.html](./docs/diagrams/reconciler.html) | How a study job gets lost, and how the reconciler decides what to do about it |
 
 ## Setup
 
@@ -238,7 +239,8 @@ nothing binds them. A process that dies in that gap leaves a row `PENDING` that 
 see, because BullMQ's own recovery is driven from Redis and Redis has no record of the job.
 
 So recovery is scanned from PostgreSQL instead. Every 60 seconds the worker sweeps rows that have
-been `PENDING` or `PROCESSING` for over 2 minutes, asks Redis what it holds, and acts on the answer:
+been `PENDING` or `PROCESSING` for over 2 minutes, asks Redis what it holds, and acts on the answer
+— [docs/diagrams/reconciler.html](./docs/diagrams/reconciler.html) draws the whole mechanism:
 
 | Redis says | `PENDING` | `PROCESSING` |
 | --- | --- | --- |
