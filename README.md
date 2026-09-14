@@ -104,7 +104,7 @@ reads the result back. If this is green, the whole chain works.
 | Boot throws `Invalid environment configuration` | `.env` is incomplete | Fill in the variables the message names |
 | Every endpoint that touches the database answers `500` | The containers are down (Docker restart, machine reboot) | `docker ps` to confirm, then `docker compose up -d` |
 | `POST /jobs` answers `503` | Redis is down | `docker compose up -d` — `GET` reads keep working throughout |
-| A job sits at `PENDING` | The worker is not running | Start `pnpm worker:dev` |
+| A job sits at `PENDING` | The worker is not running | Start `pnpm worker:dev` — the reconciler re-enqueues anything the queue lost within a minute |
 | `docker compose up -d` hangs with no output at all | It is trying to pull images from the registry | If the `postgres:16` and `redis:7` images are already local: `docker compose up -d --pull never` |
 
 After changing `prisma/schema.prisma`: `pnpm contract:emit`, then
@@ -130,7 +130,8 @@ Client                        API                          Worker
 ```
 
 The queue is named `study-guide-queue` and its task is `generate-study-guide`. The queue payload
-carries only `{ studyJobId }` — PostgreSQL remains the single source of truth for the source text.
+carries only `{ studyJobId }` — PostgreSQL remains the single source of truth for the source text,
+which is also why recovery is scanned from PostgreSQL and not from Redis.
 
 ## Pipeline
 
@@ -214,10 +215,10 @@ Ordered by `createdAt` descending, `limit` at most 50. Continue to the next page
 
 | Status | Meaning |
 | --- | --- |
-| `PENDING` | Stored and queued, not yet touched by a worker |
+| `PENDING` | Stored, not yet touched by a worker. Normally queued too — see the reconciler below |
 | `PROCESSING` | A worker is running the pipeline (including while retrying) |
 | `COMPLETED` | The guide is stored whole |
-| `FAILED` | The pipeline stopped; zero results stored, `failureReason` filled in |
+| `FAILED` | No guide will arrive; zero results stored, `failureReason` says why |
 
 Status only moves forward. `COMPLETED` and `FAILED` are final, so a client may stop polling the
 moment it sees either.
@@ -226,6 +227,30 @@ moment it sees either.
 with exponential backoff, and the status stays `PROCESSING` throughout. **Permanent failures** —
 material that carries no teachable concepts — go straight to `FAILED` with no retry.
 See [ADR-0001](./docs/adr/0001-classifying-permanent-vs-transient-failures.md).
+
+A third origin has nothing to do with the pipeline: a job the queue lost, which the **reconciler**
+closes as abandoned. `failureReason` is what separates the three.
+
+## The reconciler
+
+Accepting a job is two writes — PostgreSQL commits the row, then Redis receives a pointer — and
+nothing binds them. A process that dies in that gap leaves a row `PENDING` that no worker will ever
+see, because BullMQ's own recovery is driven from Redis and Redis has no record of the job.
+
+So recovery is scanned from PostgreSQL instead. Every 60 seconds the worker sweeps rows that have
+been `PENDING` or `PROCESSING` for over 2 minutes, asks Redis what it holds, and acts on the answer:
+
+| Redis says | `PENDING` | `PROCESSING` |
+| --- | --- | --- |
+| `active` / `waiting` / `delayed` | leave alone — genuinely in flight | leave alone |
+| `unknown` | **re-enqueue**, however old it is | **close** as abandoned |
+| `completed` / `failed` | **close** as abandoned | **close** as abandoned |
+
+Age never condemns a job: it only decides when a row is worth a question. Redis authorises every
+action — a threshold could not, because ordinary jobs here have taken up to 243 seconds end to end.
+And asking is not optional: `queue.add` deduplicates on the *existence* of the job hash, so a job
+left behind in Redis silently swallows a re-add. The reasoning is in
+[ADR-0006](./docs/adr/0006-recovering-study-jobs-the-queue-has-lost.md).
 
 ## Stack
 
@@ -268,10 +293,10 @@ above — `202` without waiting, `guide` null until `COMPLETED`, concepts in ord
 questions, and a concept count in the database equal to the one the API returns. The steps line up
 with the happy flow diagram.
 
-[docs/TEST-CASES.md](./docs/TEST-CASES.md) holds 29 scenarios with copy-ready commands and expected
+[docs/TEST-CASES.md](./docs/TEST-CASES.md) holds 33 scenarios with copy-ready commands and expected
 results — including the ones `pnpm demo` does not cover: cursor pagination, transient retries, a
-dead Redis, a worker killed mid-work, database constraints, and resilience against prompt
-injection. The figures in the "measured results" section come from real runs, not estimates.
+dead Redis, a worker killed mid-work, a job that never reached the queue, database constraints, and
+resilience against prompt injection. The figures in the "measured results" section come from real runs, not estimates.
 
 The test material lives in `scripts/fixtures/`:
 
@@ -297,16 +322,21 @@ The test material lives in `scripts/fixtures/`:
 
 ## Known limitations
 
-**A ghost `PENDING` row if the API process dies between the INSERT and the enqueue.** A dead Redis
-is already handled: enqueueing fails fast, the job is marked `FAILED`, and the client receives a
-`503`. What cannot be handled is the API process dying in exactly that gap — no `catch` gets to
-run, and the row is left `PENDING` with no counterpart in Redis. The cure for this is a recovery
-sweeper (re-enqueueing old `PENDING` rows) or an outbox pattern; neither is deliberately in place.
+**Recovery is eventual, not immediate.** A job the queue lost is found by the next sweep, so up to
+about a minute passes before anything happens — and during that minute `PENDING` is ambiguous: it
+may mean "queued" or "lost and not yet noticed". That ambiguity was accepted deliberately rather
+than split into two client-visible statuses that would demand the same action from a client.
 
 **Recovering a stuck job takes about a minute.** If a worker dies mid-work, the job stays
 `PROCESSING` until BullMQ detects it as *stalled* and hands it to another worker. Measured at ~86
 seconds from killing the worker to `COMPLETED` (stalled detection + the pipeline rerun from the
-first step). Throughout that, a client sees only `PROCESSING`.
+first step). Throughout that, a client sees only `PROCESSING`. A job that stalls **twice** exhausts
+`maxStalledCount` and is dropped by BullMQ without the processor ever running; that one is closed by
+the reconciler rather than retried, because how far the dead worker got is unknowable.
+
+**A `PENDING` row inserted straight into PostgreSQL is real work.** The reconciler cannot tell it
+apart from a job the API failed to enqueue, so tests that insert rows by hand have to clean up after
+themselves.
 
 **No authentication, rate limiting, or cost ceiling.** A single request can trigger three model
 calls over 20,000 characters of material. Do not expose this publicly as it stands.
