@@ -8,7 +8,8 @@ menjalankan pipeline empat langkah dengan panggilan model sungguhan, lalu menyim
 PostgreSQL untuk diambil kemudian.
 
 Bahasa domainnya ada di [CONTEXT.md](./CONTEXT.md); keputusan yang tidak jelas dari kodenya
-dijelaskan di [docs/adr/](./docs/adr/).
+dijelaskan di [docs/adr/](./docs/adr/); skenario uji lengkap beserta hasil nyatanya ada di
+[docs/TEST-CASES.md](./docs/TEST-CASES.md).
 
 ## Alur permintaan
 
@@ -187,6 +188,22 @@ Jalur kegagalan permanen memakai `scripts/fixtures/source-noise.txt` (struk bela
 bergantung pada penilaian model: kalau suatu saat model memaksakan dua konsep dari struk, skrip
 melaporkannya alih-alih gagal.
 
+## Menguji sendiri
+
+[docs/TEST-CASES.md](./docs/TEST-CASES.md) memuat 29 skenario dengan perintah siap salin dan hasil
+yang diharapkan — termasuk yang tidak dicakup `pnpm demo`: paginasi cursor, retry transient, Redis
+mati, worker mati di tengah pekerjaan, constraint database, dan ketahanan terhadap prompt injection.
+Angka pada bagian "hasil terukur" berasal dari eksekusi nyata, bukan perkiraan.
+
+Materi ujinya ada di `scripts/fixtures/`:
+
+| Berkas | Isi | Menguji |
+| --- | --- | --- |
+| `source-rich.txt` | Transkrip kuliah event loop, 2.403 karakter | Alur sukses |
+| `source-thin.txt` | Catatan `let`/`const`, 778 karakter, dua gagasan | Materi tipis tapi sah |
+| `source-noise.txt` | Struk belanja, nol gagasan | Kegagalan permanen |
+| `source-injection.txt` | Transkrip sah + perintah pembajak | Ketahanan prompt injection |
+
 ## Perintah
 
 | Perintah | Kegunaan |
@@ -218,9 +235,10 @@ dari langkah pertama). Selama itu client hanya melihat `PROCESSING`.
 **Tidak ada autentikasi, rate limit, atau batas biaya.** Satu permintaan bisa memicu tiga panggilan
 model atas materi 20.000 karakter. Jangan dipaparkan ke publik apa adanya.
 
-**Tidak ada test otomatis.** `pnpm demo` adalah bukti end-to-end, bukan test suite; ia memanggil
-model sungguhan sehingga tidak cocok untuk CI. Langkah 4 pipeline (`assemble-guide`) adalah bagian
-yang paling layak diberi unit test lebih dulu karena murni deterministik.
+**Tidak ada test otomatis.** `pnpm demo` dan [docs/TEST-CASES.md](./docs/TEST-CASES.md) adalah bukti
+end-to-end yang dijalankan manusia, bukan test suite; keduanya memanggil model sungguhan sehingga
+tidak cocok untuk CI. Langkah 4 pipeline (`assemble-guide`) adalah bagian yang paling layak diberi
+unit test lebih dulu karena murni deterministik — ia tidak menyentuh jaringan sama sekali.
 
 **Build TypeScript sengaja tidak disediakan.** `tsconfig.json` memakai `noEmit`; jalur yang
 didukung adalah `tsx`. Kompilasi ke `dist/` butuh penyesuaian resolusi modul yang belum dikerjakan.
