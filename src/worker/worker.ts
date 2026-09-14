@@ -18,21 +18,21 @@ export const worker = new Worker<StudyGuideJobData>(
     const attempt = job.attemptsMade + 1;
     const maxAttempts = job.opts.attempts ?? 1;
 
-    console.log(`\n[worker] Study job ${studyJobId} — percobaan ${attempt}/${maxAttempts}`);
+    console.log(`\n[worker] Study job ${studyJobId} — attempt ${attempt}/${maxAttempts}`);
 
     const studyJob = await findStudyJob(studyJobId);
     if (!studyJob) {
-      // Tidak ada baris untuk ditandai gagal; mengulang tidak akan memunculkannya.
-      console.error(`[worker] Study job ${studyJobId} tidak ada di database; job dibuang.`);
+      // There is no row to mark as failed; retrying will not make one appear.
+      console.error(`[worker] Study job ${studyJobId} is not in the database; discarding the job.`);
       return;
     }
 
-    // COMPLETED dan FAILED bersifat final (CONTEXT.md, "Status Study Job").
-    // FAILED bisa terjadi sebelum worker menyentuh job ini: API menandainya
-    // begitu pengantrean melewati batas waktu, dan perintah add yang terlambat
-    // masih bisa tiba di sini setelahnya.
+    // COMPLETED and FAILED are final (CONTEXT.md, "Study Job status").
+    // FAILED can happen before the worker ever touches this job: the API marks
+    // it as soon as enqueueing times out, and a late add command can still
+    // arrive here afterwards.
     if (studyJob.status === "COMPLETED" || studyJob.status === "FAILED") {
-      console.log(`[worker] Study job ${studyJobId} sudah ${studyJob.status}; tidak dikerjakan.`);
+      console.log(`[worker] Study job ${studyJobId} is already ${studyJob.status}; skipping.`);
       return;
     }
 
@@ -45,11 +45,11 @@ export const worker = new Worker<StudyGuideJobData>(
         language: studyJob.language,
       });
 
-      // Satu transaksi: konsep, soal, dan status COMPLETED (docs/adr/0002).
+      // One transaction: concepts, questions, and the COMPLETED status (docs/adr/0002).
       await saveStudyGuide(studyJobId, guide);
 
       console.log(
-        `[worker] Study job ${studyJobId} COMPLETED — ${guide.concepts.length} konsep, ${guide.questions.length} soal.`,
+        `[worker] Study job ${studyJobId} COMPLETED — ${guide.concepts.length} concepts, ${guide.questions.length} questions.`,
       );
     } catch (error) {
       const permanent = isPermanentFailure(error);
@@ -59,13 +59,13 @@ export const worker = new Worker<StudyGuideJobData>(
       if (permanent || lastAttempt) {
         await markFailed(studyJobId, reason);
         console.error(
-          `[worker] Study job ${studyJobId} FAILED (${permanent ? "permanen" : "transient, percobaan habis"}): ${reason}`,
+          `[worker] Study job ${studyJobId} FAILED (${permanent ? "permanent" : "transient, attempts exhausted"}): ${reason}`,
         );
 
-        // Kegagalan permanen tidak dilempar: percobaan ulang tidak akan menolong.
+        // Permanent failures are not rethrown: a retry would not help.
         if (permanent) return;
       } else {
-        console.warn(`[worker] Study job ${studyJobId} gagal transient, akan diulang: ${reason}`);
+        console.warn(`[worker] Study job ${studyJobId} failed transiently, will retry: ${reason}`);
       }
 
       throw error;
@@ -78,9 +78,9 @@ export const worker = new Worker<StudyGuideJobData>(
 );
 
 console.log(
-  `[worker] Menunggu job di "${QUEUE_NAME}" (redis ${env.REDIS_HOST}:${env.REDIS_PORT}), model ${env.MODEL_ID}.`,
+  `[worker] Waiting for jobs on "${QUEUE_NAME}" (redis ${env.REDIS_HOST}:${env.REDIS_PORT}), model ${env.MODEL_ID}.`,
 );
 
 worker.on("error", (error) => {
-  console.error("[worker] Error koneksi/worker:", error);
+  console.error("[worker] Connection/worker error:", error);
 });

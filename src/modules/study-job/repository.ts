@@ -47,9 +47,10 @@ export async function markFailed(id: string, reason: string) {
 }
 
 /**
- * Tulis seluruh Study Guide dalam satu transaksi — lihat docs/adr/0002.
- * Id konsep dibuat di sini (bukan dibaca dari hasil insert) supaya soal bisa
- * menunjuk konsepnya tanpa bergantung pada urutan baris yang dikembalikan.
+ * Write the whole Study Guide in a single transaction — see docs/adr/0002.
+ * Concept ids are generated here (rather than read back from the insert) so
+ * questions can point at their concept without depending on the order of the
+ * returned rows.
  */
 export async function saveStudyGuide(studyJobId: string, guide: StudyGuide) {
   const conceptRows: ConceptRow[] = guide.concepts.map((concept) => ({
@@ -97,7 +98,7 @@ export async function listStudyJobs(
   return page.limit(limit).all();
 }
 
-/** Muat konsep + soal untuk sekumpulan job sekaligus (dua query, bukan N+1). */
+/** Load concepts + questions for a set of jobs at once (two queries, not N+1). */
 export async function loadGuides(studyJobIds: string[]) {
   if (studyJobIds.length === 0) {
     return { concepts: [] as ConceptRow[], questions: [] as QuestionRow[] };

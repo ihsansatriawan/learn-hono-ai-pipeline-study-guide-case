@@ -5,8 +5,8 @@ export const CreateStudyJobSchema = z.object({
   sourceText: z
     .string()
     .trim()
-    .min(SOURCE_TEXT_MIN, `Materi minimal ${SOURCE_TEXT_MIN} karakter.`)
-    .max(SOURCE_TEXT_MAX, `Materi maksimal ${SOURCE_TEXT_MAX} karakter.`),
+    .min(SOURCE_TEXT_MIN, `The material must be at least ${SOURCE_TEXT_MIN} characters.`)
+    .max(SOURCE_TEXT_MAX, `The material must be at most ${SOURCE_TEXT_MAX} characters.`),
   level: z.enum(LEVELS).default("beginner"),
   language: z.enum(LANGUAGES).default("id"),
 });

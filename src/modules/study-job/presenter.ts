@@ -6,18 +6,18 @@ type StudyJobRow = {
   language: string;
   status: string;
   failureReason: string | null;
-  // Prisma 8 memetakan DateTime ke Temporal.Instant (docs/adr/0004).
-  // JSON.stringify memanggil toJSON()-nya, jadi keluar sebagai string ISO 8601.
+  // Prisma 8 maps DateTime to Temporal.Instant (docs/adr/0004).
+  // JSON.stringify calls its toJSON(), so it comes out as an ISO 8601 string.
   createdAt: Temporal.Instant;
   completedAt: Temporal.Instant | null;
 };
 
 /**
- * sourceText sengaja tidak pernah dikembalikan: client baru saja mengirimnya,
- * dan ukurannya membuat polling jadi mahal.
+ * sourceText is deliberately never returned: the client just sent it, and its
+ * size would make polling expensive.
  *
- * `guide` bernilai null persis sampai status COMPLETED — tidak ada guide
- * setengah jadi yang bisa dilihat client (docs/adr/0002).
+ * `guide` stays null right up until the status is COMPLETED — there is no
+ * half-finished guide for a client to see (docs/adr/0002).
  */
 export function presentStudyJob(
   job: StudyJobRow,

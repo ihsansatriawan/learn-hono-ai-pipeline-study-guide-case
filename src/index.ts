@@ -8,20 +8,20 @@ const app = new Hono()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/jobs", studyJobRouter);
 
-app.notFound((c) => c.json({ error: "Route tidak ditemukan." }, 404));
+app.notFound((c) => c.json({ error: "Route not found." }, 404));
 
 app.onError((error, c) => {
   console.error("[api] Unhandled error:", error);
-  return c.json({ error: "Terjadi kesalahan internal." }, 500);
+  return c.json({ error: "An internal error occurred." }, 500);
 });
 
 /**
- * Koneksi producer memakai enableOfflineQueue: false, jadi perintah yang
- * dikirim sebelum koneksi siap akan ditolak. Hangatkan koneksinya lebih dulu
- * supaya permintaan pertama tidak gagal hanya karena datang terlalu cepat.
+ * The producer connection uses enableOfflineQueue: false, so commands sent
+ * before the connection is ready are rejected. Warm the connection up first so
+ * the very first request does not fail merely for arriving too early.
  *
- * Redis yang mati TIDAK menghalangi server menyala: pembacaan (GET /jobs) tetap
- * berguna, dan POST akan menolak dengan jujur lewat 503.
+ * A dead Redis does NOT stop the server from starting: reads (GET /jobs) stay
+ * useful, and POST rejects honestly with a 503.
  */
 async function warmUpQueue() {
   const timeout = new Promise<"timeout">((resolve) =>
@@ -31,11 +31,11 @@ async function warmUpQueue() {
   try {
     const outcome = await Promise.race([queue.waitUntilReady().then(() => "ready" as const), timeout]);
     if (outcome === "timeout") {
-      console.warn("[api] Redis belum siap setelah 5s; POST /jobs akan membalas 503 sampai tersambung.");
+      console.warn("[api] Redis not ready after 5s; POST /jobs will answer 503 until it connects.");
     }
   } catch (error) {
     console.warn(
-      `[api] Tidak bisa menyambung ke Redis: ${error instanceof Error ? error.message : String(error)}`,
+      `[api] Could not connect to Redis: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
@@ -43,5 +43,5 @@ async function warmUpQueue() {
 await warmUpQueue();
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
-  console.log(`[api] Berjalan di http://localhost:${info.port}`);
+  console.log(`[api] Running at http://localhost:${info.port}`);
 });

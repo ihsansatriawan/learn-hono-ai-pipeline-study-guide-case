@@ -1,11 +1,11 @@
 /**
- * Taksonomi kegagalan pipeline — lihat docs/adr/0001.
+ * Pipeline failure taxonomy — see docs/adr/0001.
  *
- * Worker memutuskan retry berdasarkan kelas error, bukan isi pesannya.
- * Error yang tidak dikenali diperlakukan sebagai transient.
+ * The worker decides whether to retry based on the error class, not the message
+ * text. Unrecognised errors are treated as transient.
  */
 
-/** Kegagalan permanen: mengulang pekerjaan yang sama tidak akan mengubah hasilnya. */
+/** Permanent failure: repeating the same work will not change the outcome. */
 export class PermanentPipelineError extends Error {
   constructor(message: string) {
     super(message);
@@ -13,7 +13,7 @@ export class PermanentPipelineError extends Error {
   }
 }
 
-/** Source Text tidak memuat cukup materi untuk membentuk Study Guide. */
+/** The source text does not carry enough material to form a Study Guide. */
 export class UnprocessableSourceError extends PermanentPipelineError {
   constructor(message: string) {
     super(message);
@@ -22,8 +22,8 @@ export class UnprocessableSourceError extends PermanentPipelineError {
 }
 
 /**
- * Output sebuah langkah tidak sejajar dengan konsep dari langkah pertama.
- * Transient: model meleset sekali, percobaan berikutnya punya peluang lengkap.
+ * A step's output does not line up with the concepts from the first step.
+ * Transient: the model slipped once, the next attempt has a chance to be whole.
  */
 export class MisalignedStepOutputError extends Error {
   constructor(message: string) {

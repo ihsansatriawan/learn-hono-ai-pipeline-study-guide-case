@@ -1,55 +1,55 @@
 # Context — Study Guide Pipeline
 
-Sebuah API asinkron yang mengubah **materi belajar mentah** menjadi **panduan belajar terstruktur**.
-Client mengirim teks sumber, API menerima dan mengantrekan, worker memproses lewat pipeline
-berlapis, dan hasilnya diambil kemudian.
+An asynchronous API that turns **raw study material** into a **structured study guide**.
+The client submits source text, the API accepts it and enqueues it, a worker processes it through
+a layered pipeline, and the result is fetched later.
 
-## Bahasa
+## Language
 
 ### Source Text
-Materi belajar mentah yang dikirim client — bab buku, transkrip kuliah, catatan, artikel panjang.
-Ini satu-satunya sumber kebenaran untuk isi guide. Model **tidak** boleh menambahkan konsep yang
-tidak ada di Source Text; kalau materi tipis, guide-nya ikut tipis.
+The raw study material the client submits — a book chapter, a lecture transcript, notes, a long
+article. It is the only source of truth for the guide's content. The model may **not** add concepts
+that are absent from the Source Text; if the material is thin, the guide is thin too.
 
 ### Study Job
-Satu permintaan pembuatan guide. Menyimpan Source Text, preferensi belajar (level, bahasa),
-status pemrosesan, dan — kalau gagal — alasannya. Diciptakan oleh API, diselesaikan oleh worker.
-Dibuat, bukan diubah: client tidak pernah mengedit Study Job.
+One request to build a guide. It holds the Source Text, the learning preferences (level, language),
+the processing status, and — when it fails — the reason. Created by the API, finished by the worker.
+It is created, not edited: a client never modifies a Study Job.
 
 ### Concept
-Satu gagasan yang bisa diajarkan, diekstrak dari Source Text. Punya judul, penjelasan, dan alasan
-kenapa penting. Urutannya bermakna — Concept diurutkan sesuai alur belajar, bukan urutan kemunculan
-di Source Text.
+One teachable idea extracted from the Source Text. It has a title, an explanation, and a reason why
+it matters. The order is meaningful — Concepts are sequenced to follow the learning path, not the
+order in which they appear in the Source Text.
 
 ### Quiz Question
-Satu soal pemeriksaan pemahaman beserta jawabannya, diturunkan dari penjelasan sebuah Concept.
-Setiap Quiz Question menunjuk Concept yang diujinya; soal tanpa Concept yang valid dibuang.
+One comprehension question together with its answer, derived from a Concept's explanation. Every
+Quiz Question points at the Concept it tests; a question without a valid Concept is discarded.
 
 ### Study Guide
-Gabungan Concept + Quiz Question milik satu Study Job. Bukan tabel tersendiri — "Study Guide" adalah
-cara bicara tentang hasil lengkap satu Study Job. Study Guide hanya ada dalam bentuk lengkap:
-tidak ada guide setengah jadi yang terlihat client.
+The combined Concepts + Quiz Questions belonging to one Study Job. It is not a table of its own —
+"Study Guide" is how we talk about the complete result of a single Study Job. A Study Guide exists
+only in complete form: no half-finished guide is ever visible to a client.
 
-### Status Study Job
-- `PENDING` — tersimpan dan terantre, belum disentuh worker.
-- `PROCESSING` — worker sedang menjalankan pipeline.
-- `COMPLETED` — Study Guide tersimpan utuh.
-- `FAILED` — pipeline berhenti; nol hasil tersimpan, alasan tercatat.
+### Study Job status
+- `PENDING` — stored and queued, not yet touched by a worker.
+- `PROCESSING` — a worker is running the pipeline.
+- `COMPLETED` — the Study Guide is stored whole.
+- `FAILED` — the pipeline stopped; zero results stored, reason recorded.
 
-Status hanya maju; `COMPLETED` dan `FAILED` bersifat final.
+Status only moves forward; `COMPLETED` and `FAILED` are final.
 
 ### Grounding
-Aturan bahwa setiap Concept dan Quiz Question harus berasal dari Source Text. Jumlah Concept
-mengikuti kepadatan materi, bukan angka yang ditetapkan di muka — materi tipis menghasilkan guide
-tipis, dan itu hasil yang benar, bukan kegagalan.
+The rule that every Concept and Quiz Question must come from the Source Text. The number of
+Concepts follows the density of the material rather than a figure fixed in advance — thin material
+produces a thin guide, and that is a correct result, not a failure.
 
 ### Unprocessable Source
-Source Text yang tidak memuat cukup materi untuk membentuk Study Guide (di bawah dua Concept).
-Ini kegagalan **permanen**: mengulang pekerjaan yang sama tidak akan mengubah hasilnya, jadi Study
-Job langsung `FAILED` tanpa percobaan ulang. Berbeda dari kegagalan **transient** (jaringan, rate
-limit, gangguan penyedia model) yang layak dicoba lagi.
+A Source Text that does not carry enough material to form a Study Guide (fewer than two Concepts).
+This is a **permanent** failure: repeating the same work will not change the outcome, so the Study
+Job goes straight to `FAILED` with no retry. This differs from a **transient** failure (network,
+rate limit, model provider outage), which is worth trying again.
 
 ### Retry
-Percobaan ulang atas Study Job yang sama setelah kegagalan transient. Selama percobaan ulang,
-status tetap `PROCESSING` — client tidak pernah melihat `FAILED` yang kemudian menjadi `COMPLETED`.
-`FAILED` hanya ditulis ketika tidak ada lagi yang bisa dicoba.
+Another attempt at the same Study Job after a transient failure. Throughout the retries the status
+stays `PROCESSING` — a client never sees a `FAILED` that later becomes `COMPLETED`. `FAILED` is
+written only once there is nothing left to try.

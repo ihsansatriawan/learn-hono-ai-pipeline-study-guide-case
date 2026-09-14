@@ -1,5 +1,5 @@
 // Prisma Next (Prisma 8) — contract source.
-// Relasi dideklarasikan hanya di sisi pemilik FK; back-reference diturunkan otomatis.
+// Relations are declared only on the FK-owning side; back-references are derived automatically.
 
 enum study_job_status {
   @@type("pg/text@1")

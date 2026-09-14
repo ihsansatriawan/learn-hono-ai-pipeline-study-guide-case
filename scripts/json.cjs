@@ -1,5 +1,5 @@
-// Pembaca JSON kecil supaya demo.sh tidak bergantung pada jq.
-// Pakai: cat response.json | node scripts/json.cjs job.id
+// Tiny JSON reader so demo.sh does not depend on jq.
+// Usage: cat response.json | node scripts/json.cjs job.id
 const fs = require("node:fs");
 
 const path = process.argv[2] || "";

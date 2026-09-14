@@ -1,14 +1,14 @@
-Catatan singkat: let dan const
+Short note: let and const
 
-Ada dua hal yang perlu kalian pegang dari deklarasi variabel modern di JavaScript.
+There are two things to hold on to about modern variable declarations in JavaScript.
 
-Pertama, const berarti pengikatannya tidak bisa dipindahkan. Setelah sebuah nama
-diikat ke satu nilai dengan const, nama itu tidak boleh diarahkan ke nilai lain.
-Yang sering disalahpahami: ini bukan berarti nilainya beku. Sebuah objek yang
-diikat dengan const tetap boleh diubah isinya; yang dilarang hanyalah menugaskan
-ulang namanya ke objek yang berbeda.
+First, const means the binding cannot be moved. Once a name is bound to a value with
+const, that name may not be pointed at a different value. The common misunderstanding:
+this does not mean the value is frozen. An object bound with const may still have its
+contents changed; the only thing forbidden is reassigning the name to a different
+object.
 
-Kedua, let dan const terikat pada blok, bukan pada fungsi. Variabel yang
-dideklarasikan di dalam kurung kurawal hanya hidup di dalam kurung kurawal itu.
-Ini berbeda dari var, yang bocor ke seluruh fungsi tempat ia dideklarasikan, dan
-itulah sumber banyak kekeliruan pada perulangan yang membuat closure.
+Second, let and const are bound to the block, not to the function. A variable declared
+inside a pair of curly braces lives only inside those braces. This differs from var,
+which leaks out to the whole function it was declared in, and that is the source of many
+mistakes in loops that create closures.

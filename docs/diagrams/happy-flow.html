@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -51,11 +51,11 @@
 <body>
   <div class="frame">
     <p class="eyebrow">Sequence · Happy Flow</p>
-    <h1>Satu materi belajar, dari 202 Accepted sampai guide tersimpan</h1>
+    <h1>One piece of study material, from 202 Accepted to a stored guide</h1>
 
     <svg viewBox="0 32 1000 728" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sg-happy-title sg-happy-desc">
-      <title id="sg-happy-title">Happy flow Study Guide Pipeline API</title>
-      <desc id="sg-happy-desc">Urutan waktu jalur sukses: client mengirim materi, API menyimpan job PENDING dan mengantrekannya lalu langsung membalas 202, worker mengambil job dari Redis, menjalankan tiga panggilan model, menulis seluruh study guide dalam satu transaksi, dan permintaan GET berikutnya mengembalikan guide itu.</desc>
+      <title id="sg-happy-title">Study Guide Pipeline API happy flow</title>
+      <desc id="sg-happy-desc">The timeline of the success path: the client submits the material, the API stores a PENDING job and enqueues it before answering 202 straight away, the worker takes the job off Redis, makes three model calls, writes the whole study guide in one transaction, and the next GET request returns that guide.</desc>
       <defs>
         <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
         <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
@@ -122,7 +122,7 @@
       <!-- 8 -->
       <line x1="828" y1="512" x2="468" y2="512" stroke="#eb6c36" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
       <rect x="516" y="492" width="88" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="560" y="501" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">1 TRANSAKSI</text>
+      <text x="560" y="501" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">1 TRANSACTION</text>
 
       <!-- 9 -->
       <line x1="96" y1="552" x2="276" y2="552" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
@@ -175,19 +175,19 @@
       <text x="32" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
 
       <line x1="136" y1="732" x2="164" y2="732" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-      <text x="176" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">PANGGILAN</text>
+      <text x="176" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">CALL</text>
 
       <line x1="304" y1="732" x2="332" y2="732" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
-      <text x="344" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">BALASAN</text>
+      <text x="344" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">REPLY</text>
 
       <line x1="472" y1="732" x2="500" y2="732" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
       <text x="512" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">HTTP CLIENT</text>
 
       <line x1="656" y1="732" x2="684" y2="732" stroke="#eb6c36" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
-      <text x="696" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">JAMINAN UTAMA</text>
+      <text x="696" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">KEY GUARANTEE</text>
 
       <rect x="852" y="726" width="8" height="12" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
-      <text x="872" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">AKTIVASI</text>
+      <text x="872" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">ACTIVATION</text>
     </svg>
   </div>
 </body>

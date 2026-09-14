@@ -6,8 +6,8 @@ const host = env.REDIS_HOST;
 const port = env.REDIS_PORT;
 
 /**
- * Worker: BullMQ mensyaratkan maxRetriesPerRequest: null, karena perintah
- * blocking yang dipakai Worker harus boleh menunggu tanpa batas.
+ * Worker: BullMQ requires maxRetriesPerRequest: null, because the blocking
+ * commands a Worker uses must be allowed to wait indefinitely.
  */
 export const workerConnection = {
   host,
@@ -16,11 +16,11 @@ export const workerConnection = {
 } as const;
 
 /**
- * Producer (API): kebalikannya. Kalau Redis mati, `queue.add` HARUS gagal cepat
- * supaya router bisa menandai job FAILED dan membalas 503 — lihat ADR-0005.
+ * Producer (API): the opposite. If Redis is down, `queue.add` MUST fail fast so
+ * the router can mark the job FAILED and answer 503 — see ADR-0005.
  *
- * Memakai konfigurasi Worker di sini membuat permintaan HTTP menggantung
- * selamanya alih-alih ditolak, dan meninggalkan baris PENDING tanpa alasan.
+ * Using the Worker configuration here would make HTTP requests hang forever
+ * instead of being rejected, leaving PENDING rows behind with no reason given.
  */
 export const queueConnection = {
   host,

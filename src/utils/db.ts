@@ -1,7 +1,7 @@
-// Prisma 8 memetakan DateTime ke Temporal.Instant dan membaca/menulisnya lewat
-// global Temporal. Node 22 belum menyediakannya, jadi polyfill HARUS terpasang
-// sebelum client dibuat — lihat docs/adr/0004. Import ini wajib berada paling
-// atas: urutan eksekusi modul ESM mengikuti urutan import.
+// Prisma 8 maps DateTime to Temporal.Instant and reads/writes it through the
+// global Temporal. Node 22 does not ship it yet, so the polyfill MUST be in
+// place before the client is created — see docs/adr/0004. This import has to
+// stay at the very top: ESM module execution follows import order.
 import "temporal-polyfill/global";
 
 import postgres from "@prisma/orm-postgres/runtime";

@@ -1,171 +1,172 @@
 # Study Guide Pipeline API
 
-API asinkron yang mengubah **materi belajar mentah** menjadi **panduan belajar terstruktur**:
-konsep-konsep berpenjelasan beserta soal pemeriksaan pemahaman.
+An asynchronous API that turns **raw study material** into a **structured study guide**:
+explained concepts together with comprehension questions.
 
-Client mengirim teks sumber dan API langsung membalas dengan ID job. Sebuah worker terpisah
-menjalankan pipeline empat langkah dengan panggilan model sungguhan, lalu menyimpan hasilnya di
-PostgreSQL untuk diambil kemudian.
+The client submits source text and the API answers immediately with a job ID. A separate worker
+runs a four-step pipeline with real model calls, then stores the result in PostgreSQL to be
+fetched later.
 
-Bahasa domainnya ada di [CONTEXT.md](./CONTEXT.md); keputusan yang tidak jelas dari kodenya
-dijelaskan di [docs/adr/](./docs/adr/); skenario uji lengkap beserta hasil nyatanya ada di
-[docs/TEST-CASES.md](./docs/TEST-CASES.md).
+The domain language lives in [CONTEXT.md](./CONTEXT.md); decisions that are not obvious from the
+code are explained in [docs/adr/](./docs/adr/); the full test scenarios with their real results are
+in [docs/TEST-CASES.md](./docs/TEST-CASES.md).
 
-Dua diagram menjelaskan sistem ini lebih cepat daripada prosa — buka berkasnya di browser:
+Two diagrams explain this system faster than prose does — open the files in a browser:
 
-| Diagram | Menjawab |
+| Diagram | Answers |
 | --- | --- |
-| [docs/diagrams/architecture.html](./docs/diagrams/architecture.html) | Komponen apa saja yang ada dan bagaimana mereka terhubung |
-| [docs/diagrams/happy-flow.html](./docs/diagrams/happy-flow.html) | Apa yang terjadi, berurutan, dari `POST /jobs` sampai guide terbaca |
+| [docs/diagrams/architecture.html](./docs/diagrams/architecture.html) | Which components exist and how they connect |
+| [docs/diagrams/happy-flow.html](./docs/diagrams/happy-flow.html) | What happens, in order, from `POST /jobs` to reading the guide |
 
 ## Setup
 
-Butuh ~5 menit, sekali saja.
+About 5 minutes, once.
 
-### Prasyarat
+### Prerequisites
 
-| Kebutuhan | Versi | Catatan |
+| Requirement | Version | Notes |
 | --- | --- | --- |
-| Node.js | **22.18+** | `.nvmrc` menunjuk 22.22.2. Wajib diperiksa lebih dulu — lihat catatan di bawah |
-| pnpm | 11.22+ | `package.json` akan mengunduhnya sendiri lewat `devEngines` bila perlu |
-| Docker + Compose | mana saja yang aktual | Hanya untuk PostgreSQL dan Redis; API dan worker jalan di mesin Anda |
-| Kunci API model | — | Penyedia apa pun yang OpenAI-compatible (OpenRouter, OpenAI, dsb.) |
+| Node.js | **22.18+** | `.nvmrc` points at 22.22.2. Check this first — see the note below |
+| pnpm | 11.22+ | `package.json` downloads it itself through `devEngines` when needed |
+| Docker + Compose | any current version | Only for PostgreSQL and Redis; the API and worker run on your machine |
+| Model API key | — | Any OpenAI-compatible provider (OpenRouter, OpenAI, etc.) |
 
-> **Periksa versi Node sebelum apa pun.** Di Node 20, `pnpm` **gagal sebelum menyentuh proyek ini**
-> dengan `ERR_UNKNOWN_BUILTIN_MODULE: No such built-in module: node:sqlite`. Pesannya menunjuk ke
-> pnpm, bukan ke versi Node, jadi mudah disalahartikan sebagai instalasi pnpm yang rusak.
+> **Check your Node version before anything else.** On Node 20, `pnpm` **fails before it ever
+> touches this project**, with `ERR_UNKNOWN_BUILTIN_MODULE: No such built-in module: node:sqlite`.
+> The message points at pnpm rather than at the Node version, so it is easily mistaken for a broken
+> pnpm installation.
 >
 > ```bash
-> nvm use          # membaca .nvmrc
-> node -v          # harus v22.18.0 atau lebih baru
+> nvm use          # reads .nvmrc
+> node -v          # must be v22.18.0 or newer
 > ```
 
-### Langkah
+### Steps
 
 ```bash
-# 1. Dependensi
+# 1. Dependencies
 pnpm install
 
-# 2. Konfigurasi — isi OPENAI_API_KEY, dan OPENAI_BASE_URL bila bukan OpenAI resmi
+# 2. Configuration — fill in OPENAI_API_KEY, and OPENAI_BASE_URL if not official OpenAI
 cp .env.example .env
 
 # 3. PostgreSQL + Redis
 docker compose up -d
 
-# 4. Kontrak Prisma (tipe + metadata runtime dari prisma/schema.prisma)
+# 4. The Prisma contract (types + runtime metadata from prisma/schema.prisma)
 pnpm contract:emit
 
-# 5. Bikin tabelnya
+# 5. Create the tables
 pnpm db:init
 ```
 
-Langkah 4 dan 5 aman diulang: `db:init` pada database yang sudah ada menerapkan nol operasi dan
-tetap sukses, jadi tidak perlu takut menjalankannya dua kali.
+Steps 4 and 5 are safe to repeat: `db:init` on an existing database applies zero operations and
+still succeeds, so there is nothing to fear about running it twice.
 
-Port host sengaja berbeda dari proyek lain di folder yang sama (`hono-prisma-bullmq` memakai
-55432/6380/3000, `feedback-pipeline-api` memakai 55433/6381/3000), supaya ketiganya bisa hidup
-bersamaan:
+The host ports are deliberately different from the other projects in the same folder
+(`hono-prisma-bullmq` uses 55432/6380/3000, `feedback-pipeline-api` uses 55433/6381/3000), so all
+three can be alive at once:
 
-| Layanan | Host | Container |
+| Service | Host | Container |
 | --- | --- | --- |
 | PostgreSQL | `localhost:55434` | `5432` |
 | Redis | `localhost:6382` | `6379` |
 | API | `localhost:3100` | — |
 
-### Menjalankan
+### Running it
 
-Dua proses, dua terminal:
+Two processes, two terminals:
 
 ```bash
-pnpm dev          # terminal 1 — API di :3100
+pnpm dev          # terminal 1 — API on :3100
 pnpm worker:dev   # terminal 2 — worker
 ```
 
-Keduanya memvalidasi environment saat boot dan **menolak start** kalau ada yang kurang, alih-alih
-gagal diam-diam di tengah job.
+Both validate the environment at boot and **refuse to start** if anything is missing, rather than
+failing silently halfway through a job.
 
-### Memastikan setup benar-benar berhasil
+### Confirming the setup really worked
 
 ```bash
 pnpm db:verify                      # "Database schema satisfies contract"
 curl localhost:3100/health          # {"ok":true}
-pnpm happy-flow                     # 15 assersi lulus, ~25 detik
+pnpm happy-flow                     # 15 assertions pass, ~25 seconds
 ```
 
-`pnpm happy-flow` adalah pemeriksaan terkuat: ia benar-benar memanggil model, menulis ke database,
-dan membaca hasilnya kembali. Kalau ini hijau, seluruh rantai bekerja.
+`pnpm happy-flow` is the strongest check: it genuinely calls the model, writes to the database, and
+reads the result back. If this is green, the whole chain works.
 
-### Kalau ada yang salah
+### When something goes wrong
 
-| Gejala | Penyebab | Perbaikan |
+| Symptom | Cause | Fix |
 | --- | --- | --- |
-| `pnpm` gagal dengan `node:sqlite` | Node di bawah 22 | `nvm use`, lalu ulangi |
-| Boot melempar `Konfigurasi environment tidak valid` | `.env` belum lengkap | Isi variabel yang disebut pesannya |
-| Semua endpoint yang menyentuh database membalas `500` | Container mati (Docker restart, mesin reboot) | `docker ps` untuk memastikan, lalu `docker compose up -d` |
-| `POST /jobs` membalas `503` | Redis mati | `docker compose up -d` — pembacaan `GET` tetap jalan selama ini |
-| Job diam di `PENDING` | Worker tidak berjalan | Nyalakan `pnpm worker:dev` |
-| `docker compose up -d` menggantung tanpa keluaran apa pun | Sedang mencoba menarik image dari registry | Kalau image `postgres:16` dan `redis:7` sudah ada lokal: `docker compose up -d --pull never` |
+| `pnpm` fails with `node:sqlite` | Node below 22 | `nvm use`, then try again |
+| Boot throws `Invalid environment configuration` | `.env` is incomplete | Fill in the variables the message names |
+| Every endpoint that touches the database answers `500` | The containers are down (Docker restart, machine reboot) | `docker ps` to confirm, then `docker compose up -d` |
+| `POST /jobs` answers `503` | Redis is down | `docker compose up -d` — `GET` reads keep working throughout |
+| A job sits at `PENDING` | The worker is not running | Start `pnpm worker:dev` |
+| `docker compose up -d` hangs with no output at all | It is trying to pull images from the registry | If the `postgres:16` and `redis:7` images are already local: `docker compose up -d --pull never` |
 
-Setelah mengubah `prisma/schema.prisma`: `pnpm contract:emit`, lalu
-`pnpm exec prisma db update --dry-run` untuk meninjau, baru `pnpm db:update`.
+After changing `prisma/schema.prisma`: `pnpm contract:emit`, then
+`pnpm exec prisma db update --dry-run` to review, and only then `pnpm db:update`.
 
-## Alur permintaan
+## Request flow
 
 ```text
 Client                        API                          Worker
   |                            |                              |
   |-- POST /jobs ------------->|                              |
-  |                            |-- simpan StudyJob PENDING     |
+  |                            |-- store StudyJob PENDING      |
   |                            |-- enqueue { studyJobId } ---->|
   |<-- 202 + job ID -----------|                              |
   |                            |                    PROCESSING
-  |                            |                    1 ekstrak konsep    (model)
-  |                            |                    2 jelaskan konsep   (model)
-  |                            |                    3 buat soal         (model)
-  |                            |                    4 rakit + validasi  (TypeScript)
-  |                            |                    satu transaksi -> COMPLETED
+  |                            |                    1 extract concepts  (model)
+  |                            |                    2 explain concepts  (model)
+  |                            |                    3 generate quiz     (model)
+  |                            |                    4 assemble+validate (TypeScript)
+  |                            |                    one transaction -> COMPLETED
   |-- GET /jobs/:id ---------->|                              |
-  |<-- guide tersimpan --------|                              |
+  |<-- the stored guide -------|                              |
 ```
 
-Antrean bernama `study-guide-queue`, tugasnya `generate-study-guide`. Payload antrean hanya
-membawa `{ studyJobId }` — PostgreSQL tetap satu-satunya sumber kebenaran untuk teks sumber.
+The queue is named `study-guide-queue` and its task is `generate-study-guide`. The queue payload
+carries only `{ studyJobId }` — PostgreSQL remains the single source of truth for the source text.
 
 ## Pipeline
 
-Langkah 1 menarik konsep **hanya** dari teks sumber dan memberi setiap konsep sebuah `slug`.
-Langkah 2 dan 3 wajib mengembalikan slug itu, dan langkah 4 mencocokkannya — bukan bersandar pada
-urutan array. Langkah 4 tidak memanggil model sama sekali; di situlah kelengkapan ditegakkan.
-Alasannya di [ADR-0003](./docs/adr/0003-konsep-diikat-slug-lintas-langkah.md).
+Step 1 pulls concepts **only** from the source text and gives each concept a `slug`. Steps 2 and 3
+must return that slug, and step 4 matches on it rather than relying on array order. Step 4 never
+calls the model; that is where completeness is enforced. The reasoning is in
+[ADR-0003](./docs/adr/0003-concepts-tied-by-slug-across-steps.md).
 
-Jumlah konsep mengikuti kepadatan materi (2–12), soal 1–3 per konsep. Materi tipis menghasilkan
-guide tipis; materi yang tidak mengajarkan apa pun menghasilkan job `FAILED`.
+The number of concepts follows the density of the material (2–12), with 1–3 questions per concept.
+Thin material produces a thin guide; material that teaches nothing produces a `FAILED` job.
 
-## Endpoint
+## Endpoints
 
-| Endpoint | Tanggung jawab | Respons |
+| Endpoint | Responsibility | Response |
 | --- | --- | --- |
-| `POST /jobs` | Validasi materi dan antrekan pekerjaan | `202` · ID job + status |
-| `GET /jobs` | Daftar job berpaginasi beserta guide tersimpan | `200` · `{ jobs, nextCursor }` |
-| `GET /jobs/:id` | Status dan guide satu job | `200` · job, atau `404` |
-| `GET /health` | Pemeriksaan hidup untuk skrip demo | `200` |
+| `POST /jobs` | Validate the material and enqueue the work | `202` · job ID + status |
+| `GET /jobs` | Paginated job list together with stored guides | `200` · `{ jobs, nextCursor }` |
+| `GET /jobs/:id` | The status and guide of one job | `200` · the job, or `404` |
+| `GET /health` | Liveness check for the demo script | `200` |
 
 ### POST /jobs
 
 ```bash
 curl -i -X POST http://localhost:3100/jobs \
   -H 'Content-Type: application/json' \
-  -d '{"sourceText":"<materi 500-20000 karakter>","level":"intermediate","language":"id"}'
+  -d '{"sourceText":"<material, 500-20000 characters>","level":"intermediate","language":"en"}'
 ```
 
-`level` — `beginner` (default) | `intermediate` | `advanced`. `language` — `id` (default) | `en`.
-Materi di bawah 500 atau di atas 20.000 karakter ditolak `400`.
+`level` — `beginner` (default) | `intermediate` | `advanced`. `language` — `id` (default) | `en`;
+it selects the language the guide is *written in*, not the language of the source material.
+Material below 500 or above 20,000 characters is rejected with `400`.
 
-`503` berarti antrean menolak pekerjaan; job ditandai `FAILED` dan tidak akan dikerjakan.
-Ini disengaja: lebih baik menolak terang-terangan daripada membalas `202` untuk pekerjaan
-yang tidak akan pernah dijalankan. Pengantrean dibatasi 5 detik, dan API tetap melayani
-pembacaan walau Redis mati — lihat
-[ADR-0005](./docs/adr/0005-koneksi-redis-terpisah-untuk-producer-dan-worker.md).
+A `503` means the queue refused the work; the job is marked `FAILED` and will never be processed.
+This is deliberate: better to refuse openly than to answer `202` for work that will never run.
+Enqueueing is bounded to 5 seconds, and the API keeps serving reads even when Redis is down — see
+[ADR-0005](./docs/adr/0005-separate-redis-connections-for-producer-and-worker.md).
 
 ### GET /jobs/:id
 
@@ -174,7 +175,7 @@ pembacaan walau Redis mati — lihat
   "id": "6d2e5223-01c7-4203-9ed1-d392a94f38f6",
   "status": "COMPLETED",
   "level": "intermediate",
-  "language": "id",
+  "language": "en",
   "createdAt": "2026-09-12T13:12:44.031Z",
   "completedAt": "2026-09-12T13:13:08.116Z",
   "failureReason": null,
@@ -183,7 +184,7 @@ pembacaan walau Redis mati — lihat
       {
         "id": "…",
         "order": 1,
-        "title": "Call stack dan sifat single-threaded",
+        "title": "The call stack and being single-threaded",
         "explanation": "…",
         "whyItMatters": "…"
       }
@@ -195,10 +196,10 @@ pembacaan walau Redis mati — lihat
 }
 ```
 
-`guide` bernilai `null` persis sampai status `COMPLETED` — tidak ada guide setengah jadi yang
-terlihat client, karena hasil ditulis dalam satu transaksi
-([ADR-0002](./docs/adr/0002-study-guide-ditulis-atomik.md)). `sourceText` tidak pernah
-dikembalikan: client baru saja mengirimnya, dan ukurannya membuat polling mahal.
+`guide` stays `null` right up until the status is `COMPLETED` — no half-finished guide is ever
+visible to a client, because the result is written in a single transaction
+([ADR-0002](./docs/adr/0002-study-guide-written-atomically.md)). `sourceText` is never returned:
+the client just sent it, and its size would make polling expensive.
 
 ### GET /jobs
 
@@ -206,112 +207,114 @@ dikembalikan: client baru saja mengirimnya, dan ukurannya membuat polling mahal.
 curl 'http://localhost:3100/jobs?limit=20'
 ```
 
-Urut `createdAt` menurun, `limit` maksimal 50. Lanjutkan halaman dengan `?cursor=<nextCursor>`.
+Ordered by `createdAt` descending, `limit` at most 50. Continue to the next page with
+`?cursor=<nextCursor>`.
 
-## Status job
+## Job status
 
-| Status | Arti |
+| Status | Meaning |
 | --- | --- |
-| `PENDING` | Tersimpan dan terantre, belum disentuh worker |
-| `PROCESSING` | Worker sedang menjalankan pipeline (termasuk saat sedang diulang) |
-| `COMPLETED` | Guide tersimpan utuh |
-| `FAILED` | Pipeline berhenti; nol hasil tersimpan, `failureReason` terisi |
+| `PENDING` | Stored and queued, not yet touched by a worker |
+| `PROCESSING` | A worker is running the pipeline (including while retrying) |
+| `COMPLETED` | The guide is stored whole |
+| `FAILED` | The pipeline stopped; zero results stored, `failureReason` filled in |
 
-Status hanya maju. `COMPLETED` dan `FAILED` final, jadi client boleh berhenti polling begitu
-melihat keduanya.
+Status only moves forward. `COMPLETED` and `FAILED` are final, so a client may stop polling the
+moment it sees either.
 
-**Kegagalan transient** (jaringan, 429, 5xx penyedia model) diulang sampai tiga kali dengan backoff
-eksponensial, dan status tetap `PROCESSING` selama itu. **Kegagalan permanen** — materi yang tidak
-memuat konsep yang bisa diajarkan — langsung `FAILED` tanpa percobaan ulang.
-Lihat [ADR-0001](./docs/adr/0001-klasifikasi-kegagalan-permanen-vs-transient.md).
+**Transient failures** (network, 429, a 5xx at the model provider) are retried up to three times
+with exponential backoff, and the status stays `PROCESSING` throughout. **Permanent failures** —
+material that carries no teachable concepts — go straight to `FAILED` with no retry.
+See [ADR-0001](./docs/adr/0001-classifying-permanent-vs-transient-failures.md).
 
 ## Stack
 
-| Tool | Peran |
+| Tool | Role |
 | --- | --- |
-| Hono + Node.js 22 | Server HTTP di port `3100` |
-| Zod | Validasi request, schema keluaran model, dan validasi environment |
-| Prisma 8 (Prisma Next) | Query bertipe, enum ber-CHECK, relasi, transaksi |
-| PostgreSQL 16 | Menyimpan StudyJob, Concept, QuizQuestion |
-| BullMQ 6 + Redis 7 | Antrean pekerjaan latar |
-| Anvia (`@anvia/core`, `@anvia/openai`) | Pipeline berlangkah + keluaran terstruktur |
-| temporal-polyfill | Global `Temporal` yang dibutuhkan codec waktu Prisma 8 |
+| Hono + Node.js 22 | HTTP server on port `3100` |
+| Zod | Request validation, model output schemas, and environment validation |
+| Prisma 8 (Prisma Next) | Typed queries, CHECK-backed enums, relations, transactions |
+| PostgreSQL 16 | Stores StudyJob, Concept, QuizQuestion |
+| BullMQ 6 + Redis 7 | The background work queue |
+| Anvia (`@anvia/core`, `@anvia/openai`) | Stepped pipeline + structured output |
+| temporal-polyfill | The global `Temporal` that Prisma 8's time codec needs |
 
-## Demo alur penuh
+## Full-flow demo
 
 ```bash
 pnpm demo
 ```
 
-Skrip ini menyalakan dan mematikan worker + API sendiri, lalu menjalankan enam langkah:
-mengirim transkrip kuliah sungguhan, menunggu sampai `COMPLETED`, mendaftar job, membaca satu
-guide, mengirim materi yang tidak bisa diproses untuk menunjukkan jalur `FAILED` beserta `404`
-untuk ID tak dikenal, dan terakhir **mematikan lalu menyalakan ulang API** untuk membuktikan guide
-yang tersimpan identik sesudahnya. Artefak responsnya tertinggal di `.demo/`.
+The script starts and stops the worker + API itself, then runs six steps: it submits a real lecture
+transcript, waits for `COMPLETED`, lists the jobs, reads one guide, submits unprocessable material
+to show the `FAILED` path along with a `404` for an unknown ID, and finally **stops and restarts
+the API** to prove the stored guide is identical afterwards. The response artefacts are left behind
+in `.demo/`.
 
-Jalur kegagalan permanen memakai `scripts/fixtures/source-noise.txt` (struk belanja). Itu
-bergantung pada penilaian model: kalau suatu saat model memaksakan dua konsep dari struk, skrip
-melaporkannya alih-alih gagal.
+The permanent-failure path uses `scripts/fixtures/source-noise.txt` (a sales receipt). That depends
+on the model's judgement: if the model one day forces two concepts out of a receipt, the script
+reports it instead of failing.
 
-## Menguji sendiri
+## Testing it yourself
 
-Jalur sukses punya test berassersi sendiri:
+The success path has its own assertion-backed test:
 
 ```bash
 pnpm happy-flow
 ```
 
-Satu materi dijalankan melewati seluruh pipeline, lalu 15 assersi memeriksa tiap jaminan di atas —
-`202` tanpa menunggu, `guide` null sampai `COMPLETED`, konsep berurutan, nol soal yatim, dan jumlah
-konsep di database sama dengan yang dikembalikan API. Langkahnya sejajar dengan diagram happy flow.
+One piece of material runs through the whole pipeline, then 15 assertions check every guarantee
+above — `202` without waiting, `guide` null until `COMPLETED`, concepts in order, zero orphaned
+questions, and a concept count in the database equal to the one the API returns. The steps line up
+with the happy flow diagram.
 
-[docs/TEST-CASES.md](./docs/TEST-CASES.md) memuat 29 skenario dengan perintah siap salin dan hasil
-yang diharapkan — termasuk yang tidak dicakup `pnpm demo`: paginasi cursor, retry transient, Redis
-mati, worker mati di tengah pekerjaan, constraint database, dan ketahanan terhadap prompt injection.
-Angka pada bagian "hasil terukur" berasal dari eksekusi nyata, bukan perkiraan.
+[docs/TEST-CASES.md](./docs/TEST-CASES.md) holds 29 scenarios with copy-ready commands and expected
+results — including the ones `pnpm demo` does not cover: cursor pagination, transient retries, a
+dead Redis, a worker killed mid-work, database constraints, and resilience against prompt
+injection. The figures in the "measured results" section come from real runs, not estimates.
 
-Materi ujinya ada di `scripts/fixtures/`:
+The test material lives in `scripts/fixtures/`:
 
-| Berkas | Isi | Menguji |
+| File | Contents | Tests |
 | --- | --- | --- |
-| `source-rich.txt` | Transkrip kuliah event loop, 2.403 karakter | Alur sukses |
-| `source-thin.txt` | Catatan `let`/`const`, 778 karakter, dua gagasan | Materi tipis tapi sah |
-| `source-noise.txt` | Struk belanja, nol gagasan | Kegagalan permanen |
-| `source-injection.txt` | Transkrip sah + perintah pembajak | Ketahanan prompt injection |
+| `source-rich.txt` | Event loop lecture transcript, 2,403 characters | The success path |
+| `source-thin.txt` | `let`/`const` notes, 778 characters, two ideas | Thin but legitimate material |
+| `source-noise.txt` | A sales receipt, zero ideas | Permanent failure |
+| `source-injection.txt` | A legitimate transcript + hijacking instructions | Prompt injection resilience |
 
-## Perintah
+## Commands
 
-| Perintah | Kegunaan |
+| Command | Purpose |
 | --- | --- |
-| `pnpm dev` / `pnpm worker:dev` | API dan worker dengan file watching |
-| `pnpm start` / `pnpm worker:start` | Sekali jalan tanpa watching |
-| `pnpm contract:emit` | Regenerasi kontrak Prisma setelah schema diubah |
-| `pnpm db:init` / `pnpm db:update` | Terapkan schema ke database |
-| `pnpm db:verify` | Cocokkan database dengan kontrak |
+| `pnpm dev` / `pnpm worker:dev` | API and worker with file watching |
+| `pnpm start` / `pnpm worker:start` | A single run without watching |
+| `pnpm contract:emit` | Regenerate the Prisma contract after a schema change |
+| `pnpm db:init` / `pnpm db:update` | Apply the schema to the database |
+| `pnpm db:verify` | Match the database against the contract |
 | `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm demo` | Demonstrasi alur penuh |
-| `pnpm happy-flow` | Test berassersi untuk jalur sukses (TC-HF) |
+| `pnpm demo` | The full-flow demonstration |
+| `pnpm happy-flow` | The assertion-backed test for the success path (TC-HF) |
 
-## Batasan yang diketahui
+## Known limitations
 
-**Baris hantu `PENDING` kalau proses API mati di antara INSERT dan enqueue.** Redis yang mati sudah
-tertangani: pengantrean gagal cepat, job ditandai `FAILED`, client menerima `503`. Yang tidak bisa
-ditangani adalah kematian proses API tepat di celah itu — tidak ada `catch` yang sempat berjalan,
-dan barisnya tertinggal `PENDING` tanpa padanan di Redis. Yang menyembuhkan ini adalah sweeper
-pemulihan (meng-enqueue ulang `PENDING` yang tua) atau pola outbox; keduanya sengaja belum dipasang.
+**A ghost `PENDING` row if the API process dies between the INSERT and the enqueue.** A dead Redis
+is already handled: enqueueing fails fast, the job is marked `FAILED`, and the client receives a
+`503`. What cannot be handled is the API process dying in exactly that gap — no `catch` gets to
+run, and the row is left `PENDING` with no counterpart in Redis. The cure for this is a recovery
+sweeper (re-enqueueing old `PENDING` rows) or an outbox pattern; neither is deliberately in place.
 
-**Pemulihan job yang nyangkut memakan sekitar satu menit.** Kalau worker mati di tengah pekerjaan,
-job tetap `PROCESSING` sampai BullMQ mendeteksinya sebagai *stalled* dan mengirimkannya ke worker
-lain. Terukur ~86 detik dari worker dibunuh sampai `COMPLETED` (deteksi stalled + pipeline diulang
-dari langkah pertama). Selama itu client hanya melihat `PROCESSING`.
+**Recovering a stuck job takes about a minute.** If a worker dies mid-work, the job stays
+`PROCESSING` until BullMQ detects it as *stalled* and hands it to another worker. Measured at ~86
+seconds from killing the worker to `COMPLETED` (stalled detection + the pipeline rerun from the
+first step). Throughout that, a client sees only `PROCESSING`.
 
-**Tidak ada autentikasi, rate limit, atau batas biaya.** Satu permintaan bisa memicu tiga panggilan
-model atas materi 20.000 karakter. Jangan dipaparkan ke publik apa adanya.
+**No authentication, rate limiting, or cost ceiling.** A single request can trigger three model
+calls over 20,000 characters of material. Do not expose this publicly as it stands.
 
-**Tidak ada test otomatis.** `pnpm demo` dan [docs/TEST-CASES.md](./docs/TEST-CASES.md) adalah bukti
-end-to-end yang dijalankan manusia, bukan test suite; keduanya memanggil model sungguhan sehingga
-tidak cocok untuk CI. Langkah 4 pipeline (`assemble-guide`) adalah bagian yang paling layak diberi
-unit test lebih dulu karena murni deterministik — ia tidak menyentuh jaringan sama sekali.
+**No automated tests.** `pnpm demo` and [docs/TEST-CASES.md](./docs/TEST-CASES.md) are end-to-end
+evidence run by a human, not a test suite; both call a real model, which makes them unsuitable for
+CI. Step 4 of the pipeline (`assemble-guide`) is the part most worth unit testing first because it
+is purely deterministic — it never touches the network at all.
 
-**Build TypeScript sengaja tidak disediakan.** `tsconfig.json` memakai `noEmit`; jalur yang
-didukung adalah `tsx`. Kompilasi ke `dist/` butuh penyesuaian resolusi modul yang belum dikerjakan.
+**No TypeScript build is provided, deliberately.** `tsconfig.json` uses `noEmit`; the supported
+path is `tsx`. Compiling to `dist/` needs module resolution work that has not been done.

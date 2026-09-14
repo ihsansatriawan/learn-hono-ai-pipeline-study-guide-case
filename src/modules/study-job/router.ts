@@ -22,15 +22,15 @@ export const studyJobRouter = new Hono()
 
     const job = await createStudyJob(body);
 
-    // Baris sudah tersimpan; kalau antrean menolak, jangan balas 202 —
-    // tidak ada yang akan mengerjakan job itu.
+    // The row is already stored; if the queue refuses, do not answer 202 —
+    // nobody would ever work on that job.
     try {
       await enqueueStudyGuideJob(job.id);
     } catch (error) {
-      const reason = `Gagal mengantre ke Redis: ${error instanceof Error ? error.message : String(error)}`;
+      const reason = `Failed to enqueue to Redis: ${error instanceof Error ? error.message : String(error)}`;
       await markFailed(job.id, reason);
       return c.json(
-        { error: "Antrean tidak tersedia, permintaan tidak diterima.", jobId: job.id },
+        { error: "Queue unavailable, request not accepted.", jobId: job.id },
         503,
       );
     }
@@ -53,7 +53,7 @@ export const studyJobRouter = new Hono()
 
     const decoded = cursor ? decodeCursor(cursor) : null;
     if (cursor && !decoded) {
-      return c.json({ error: "Cursor tidak valid." }, 400);
+      return c.json({ error: "Invalid cursor." }, 400);
     }
 
     const jobs = await listStudyJobs(limit, decoded ?? undefined);
@@ -76,7 +76,7 @@ export const studyJobRouter = new Hono()
 
     const job = await findStudyJob(id);
     if (!job) {
-      return c.json({ error: `Study job ${id} tidak ditemukan.` }, 404);
+      return c.json({ error: `Study job ${id} not found.` }, 404);
     }
 
     const { concepts, questions } = await loadGuides([job.id]);
