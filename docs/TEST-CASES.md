@@ -580,6 +580,150 @@ duration of a single job (`concurrency: 2`).
 
 **Measured result** — 37 seconds for two jobs; a single job on its own takes ~25–29 seconds.
 
+### TC-D9 · A Study Job that never reached the queue
+
+The case that produced [ADR-0006](./adr/0006-recovering-study-jobs-the-queue-has-lost.md): the row
+is committed, the `queue.add` never lands, and nothing fails loudly. BullMQ cannot recover it — its
+recovery is driven from Redis, and Redis has no record of the job at all.
+
+Build one by hand, the way the API would have left it:
+
+```bash
+O=$(psqlq "INSERT INTO \"studyJob\"(id,\"sourceText\",level,language,status,\"createdAt\")
+           VALUES (gen_random_uuid(),repeat('x',600),'beginner','en','PENDING', now() - interval '10 minutes')
+           RETURNING id")
+docker exec studyguide-redis redis-cli exists "bull:study-guide-queue:$O"   # 0 — the queue never saw it
+curl -s "$API/jobs/$O" | pick status                                        # PENDING
+```
+
+Leave the worker running and wait for one sweep (60 seconds).
+
+**Expected** — the reconciler asks Redis, gets `unknown`, and re-enqueues. The 600 `x` characters
+then fail the pipeline as an Unprocessable Source, so the job lands on `FAILED` permanently rather
+than sitting `PENDING` forever:
+
+```
+[reconciler] Study job <id> was missing from the queue; re-enqueued.
+[reconciler] Swept 1 stale study job(s): 1 healed, 0 closed.
+[worker]     Study job <id> FAILED (permanent): UnprocessableSourceError: ...
+```
+
+Use a real Source Text instead of `repeat('x',600)` to see the other half — healed, then
+`COMPLETED`.
+
+```bash
+psqlq "DELETE FROM \"studyJob\" WHERE id='$O'"
+```
+
+### TC-D10 · A Study Job the queue has already finished
+
+The divergence `add` alone can never repair: the job hash still exists in Redis, so
+`addStandardJob-9.lua` returns early and the add silently does nothing. Only asking `getJobState`
+first reveals it.
+
+Do **not** build this case by rewinding a real `COMPLETED` job to `PENDING` — its concepts stay
+attached, and closing it would leave a `FAILED` Study Job owning a Study Guide, which ADR-0002
+makes impossible in the first place. Fabricate the queue side instead:
+
+```bash
+Q=bull:study-guide-queue; F="recon-test-$(date +%s)"
+docker exec studyguide-redis redis-cli hset "$Q:$F" name generate-study-guide \
+  data "{\"studyJobId\":\"$F\"}" timestamp 1789300000000 finishedOn 1789300100000
+docker exec studyguide-redis redis-cli zadd "$Q:completed" 1789300100000 "$F"
+psqlq "INSERT INTO \"studyJob\"(id,\"sourceText\",level,language,status,\"createdAt\")
+       VALUES ('$F',repeat('b',600),'beginner','en','PENDING', now() - interval '10 minutes')"
+```
+
+**Expected** — the reconciler reads `completed`, sees that the queue is done with a job PostgreSQL
+still thinks is waiting, and closes it. A blind `queue.add` on the same id leaves the waiting count
+at `0`, proving the add really is a no-op.
+
+**Measured result**
+
+```
+before — B: completed
+blind add on B -> waiting count: 0 (expect 0) | returned id: recon-test-1789378540
+[reconciler] Study job recon-test-1789378540 (PENDING, queue: completed) closed as FAILED.
+FAILED | Abandoned: the queue finished this study job as "completed", but no study guide was ever stored.
+```
+
+```bash
+psqlq "DELETE FROM \"studyJob\" WHERE id='$F'"
+docker exec studyguide-redis redis-cli del "$Q:$F"
+docker exec studyguide-redis redis-cli zrem "$Q:completed" "$F"
+```
+
+### TC-D11 · A Study Job claimed by a worker that vanished
+
+The mirror of TC-D9, one status further along. `maxStalledCount` defaults to `1`, so a job that
+stalls twice is moved to `failed` **without the processor ever running** — the worker's `catch`
+never fires, and nothing writes `FAILED`. The row stays `PROCESSING` forever.
+
+```bash
+P=$(psqlq "INSERT INTO \"studyJob\"(id,\"sourceText\",level,language,status,\"createdAt\")
+           VALUES (gen_random_uuid(),repeat('a',600),'beginner','en','PROCESSING', now() - interval '10 minutes')
+           RETURNING id")
+```
+
+**Expected** — the reconciler asks Redis, gets `unknown`, and **closes** rather than re-queues: how
+far the dead worker got is unknowable, and `attempts: 3` plus the stalled check have already spent
+what the system was willing to spend.
+
+**Measured result**
+
+```
+before — A: unknown
+[reconciler] Study job 3373ab64-... (PROCESSING, queue: unknown) closed as FAILED.
+sweep: { seen: 2, healed: 0, closed: 2 }
+FAILED | Abandoned: a worker claimed this study job and never finished it; the queue no longer holds it.
+```
+
+```bash
+psqlq "DELETE FROM \"studyJob\" WHERE id='$P'"
+```
+
+> `.delete()` on this ORM affects a single row, like `.update()` — a cleanup written as
+> `.where((j) => j.id.in([a, b])).delete()` removes only one of the two.
+
+### TC-D12 · A finished guide has nowhere to go
+
+The narrow race the reconciler cannot rule out: it reads `unknown` and closes a `PROCESSING` row
+whose worker is in fact still alive. The worker then finishes and tries to store a guide for a job
+that is already `FAILED`. "Status only moves forward" must hold, and no Concept may survive.
+
+```bash
+cat > src/__rollback.ts <<'TS'
+import { db } from "./utils/db";
+import { saveStudyGuide } from "./modules/study-job/repository";
+const job = await db.orm.public.StudyJob.create({
+  sourceText: "c".repeat(600), level: "beginner", language: "en",
+  status: "FAILED", failureReason: "closed by the reconciler while the worker was still alive",
+});
+try { await saveStudyGuide(job.id, {
+  concepts: [{ slug: "a", order: 1, title: "A", explanation: "e", whyItMatters: "w" }],
+  questions: [{ slug: "a", question: "Q?", answer: "A", difficulty: "easy" as const }],
+}); console.log("NO THROW — guard failed"); }
+catch (e) { console.log("threw:", (e as Error).name); }
+const after = await db.orm.public.StudyJob.where((j) => j.id.eq(job.id)).first();
+console.log(after!.status, "|", after!.failureReason);
+console.log("concepts:", (await db.orm.public.Concept.where((c) => c.studyJobId.eq(job.id)).all()).length);
+await db.orm.public.StudyJob.where((j) => j.id.eq(job.id)).delete();
+await db.close();
+TS
+pnpm tsx src/__rollback.ts; rm src/__rollback.ts
+```
+
+**Expected** — the write throws, the status and the original reason are untouched, and the concepts
+roll back with the transaction.
+
+**Measured result**
+
+```
+threw: StudyJobAlreadyFinalError            (classified permanent, so no retry)
+FAILED | closed by the reconciler while the worker was still alive
+concepts: 0
+```
+
 ---
 
 # E. Database and constraints
@@ -610,7 +754,13 @@ psqlq "INSERT INTO \"studyJob\"(id,\"sourceText\",level,language,status) VALUES 
 psqlq "UPDATE \"studyJob\" SET status='NONSENSE' WHERE id='t2'"
 psqlq "UPDATE \"studyJob\" SET level='wizard'    WHERE id='t2'"
 psqlq "UPDATE \"studyJob\" SET status='COMPLETED' WHERE id='t2'"
+psqlq "DELETE FROM \"studyJob\" WHERE id='t2'"
 ```
+
+> The `DELETE` is not optional. Since [ADR-0006](./adr/0006-recovering-study-jobs-the-queue-has-lost.md)
+> a `PENDING` row left behind by an aborted run is real work: the reconciler finds it, re-enqueues
+> it, and a worker spends model calls on `repeat('x',600)`. Every test that inserts a `studyJob`
+> straight into PostgreSQL has to clean up after itself.
 
 **Expected** — the first two commands are rejected, the last one succeeds:
 
@@ -799,6 +949,10 @@ shorter, that has to be said explicitly in `LEVEL_GUIDANCE` in `src/pipeline/pro
 | D6 | Worker dies mid-work | Recovered through stalled detection (~86s) | no |
 | D7 | Double enqueue | One piece of work only | no |
 | D8 | Two jobs at once | Both finish, faster than sequentially | no |
+| D9 | Row never reached the queue | Reconciler re-enqueues it within one sweep | no |
+| D10 | Queue done, row still `PENDING` | Reconciler closes it as `FAILED`; blind add is a no-op | no |
+| D11 | Worker vanished mid-claim | Reconciler closes the `PROCESSING` row as `FAILED` | no |
+| D12 | Guide ready for a closed job | Throws, rolls back, status and reason unchanged | no |
 | E1 | Cascade delete | Children deleted too | no |
 | E2 | Nonsense enum | Rejected by a CHECK constraint | no |
 | E3 | Duplicate slug | Rejected by the unique constraint | no |

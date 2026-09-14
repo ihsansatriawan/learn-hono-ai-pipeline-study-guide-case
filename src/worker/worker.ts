@@ -3,6 +3,7 @@ import { QUEUE_NAME, workerConnection } from "./config";
 import type { StudyGuideJobData } from "./queue";
 import { generateStudyGuide } from "../pipeline/study-guide-pipeline";
 import { describeFailure, isPermanentFailure } from "../errors";
+import { startReconciler } from "./reconciler";
 import {
   findStudyJob,
   markFailed,
@@ -36,7 +37,13 @@ export const worker = new Worker<StudyGuideJobData>(
       return;
     }
 
-    await markProcessing(studyJobId);
+    // Between the check above and this write, the reconciler may have closed the
+    // job (docs/adr/0006). markProcessing refuses to move a final status, and
+    // says so — that refusal is the signal to stop.
+    if (!(await markProcessing(studyJobId))) {
+      console.log(`[worker] Study job ${studyJobId} became final while being claimed; skipping.`);
+      return;
+    }
 
     try {
       const guide = await generateStudyGuide({
@@ -80,6 +87,11 @@ export const worker = new Worker<StudyGuideJobData>(
 console.log(
   `[worker] Waiting for jobs on "${QUEUE_NAME}" (redis ${env.REDIS_HOST}:${env.REDIS_PORT}), model ${env.MODEL_ID}.`,
 );
+
+// Recovery is scanned from PostgreSQL, so it lives with the worker rather than
+// with the API — the API is a request/response boundary and the first thing to
+// be scaled horizontally. See docs/adr/0006.
+startReconciler();
 
 worker.on("error", (error) => {
   console.error("[worker] Connection/worker error:", error);

@@ -31,10 +31,13 @@ The combined Concepts + Quiz Questions belonging to one Study Job. It is not a t
 only in complete form: no half-finished guide is ever visible to a client.
 
 ### Study Job status
-- `PENDING` — stored and queued, not yet touched by a worker.
+- `PENDING` — stored, not yet touched by a worker. Normally it is also queued, but a `PENDING`
+  that has sat far too long may be an Abandoned Study Job instead.
 - `PROCESSING` — a worker is running the pipeline.
 - `COMPLETED` — the Study Guide is stored whole.
-- `FAILED` — the pipeline stopped; zero results stored, reason recorded.
+- `FAILED` — no Study Guide will arrive; zero results stored, reason recorded. The cause is
+  either the pipeline stopping or the Study Job never reaching a worker at all — see
+  Abandoned Study Job. `failureReason` says which.
 
 Status only moves forward; `COMPLETED` and `FAILED` are final.
 
@@ -49,7 +52,21 @@ This is a **permanent** failure: repeating the same work will not change the out
 Job goes straight to `FAILED` with no retry. This differs from a **transient** failure (network,
 rate limit, model provider outage), which is worth trying again.
 
+### Abandoned Study Job
+A Study Job that was stored but never reached the queue, so no worker will ever pick it up. It sits
+at `PENDING` indefinitely: the row exists, the queue entry does not, and nothing failed loudly
+enough to record a reason. It is neither a permanent nor a transient pipeline failure — the
+pipeline never ran at all. Age alone never condemns it: however long it has sat, a Study Job
+nothing has started work on is simply put back in the queue. It is declared abandoned — written
+`FAILED` — only when the queue turns out to have finished with it without a Study Guide appearing,
+or when repeated attempts to queue it keep coming to nothing. Either way the client stops waiting
+for an answer that is not coming.
+
 ### Retry
 Another attempt at the same Study Job after a transient failure. Throughout the retries the status
 stays `PROCESSING` — a client never sees a `FAILED` that later becomes `COMPLETED`. `FAILED` is
 written only once there is nothing left to try.
+
+Retrying the *queue* is a different thing and stays at `PENDING`: an Abandoned Study Job has no
+pipeline run to resume, only an enqueue to repeat. Both forms share the same promise — the client
+never sees a `FAILED` that later becomes `COMPLETED`.
