@@ -1,0 +1,71 @@
+// Prisma Next (Prisma 8) — contract source.
+// Relasi dideklarasikan hanya di sisi pemilik FK; back-reference diturunkan otomatis.
+
+enum study_job_status {
+  @@type("pg/text@1")
+  PENDING    = "PENDING"
+  PROCESSING = "PROCESSING"
+  COMPLETED  = "COMPLETED"
+  FAILED     = "FAILED"
+}
+
+enum study_level {
+  @@type("pg/text@1")
+  beginner     = "beginner"
+  intermediate = "intermediate"
+  advanced     = "advanced"
+}
+
+enum study_language {
+  @@type("pg/text@1")
+  id = "id"
+  en = "en"
+}
+
+enum quiz_difficulty {
+  @@type("pg/text@1")
+  easy   = "easy"
+  medium = "medium"
+  hard   = "hard"
+}
+
+model StudyJob {
+  id            String           @id @default(uuid())
+  sourceText    String
+  level         study_level
+  language      study_language
+  status        study_job_status
+  failureReason String?
+  createdAt     DateTime         @default(now())
+  completedAt   DateTime?
+
+  @@index([createdAt])
+}
+
+model Concept {
+  id           String   @id @default(uuid())
+  studyJobId   String
+  studyJob     StudyJob @relation(fields: [studyJobId], references: [id], onDelete: Cascade)
+  slug         String
+  order        Int
+  title        String
+  explanation  String
+  whyItMatters String
+
+  @@unique([studyJobId, slug])
+  @@index([studyJobId])
+}
+
+model QuizQuestion {
+  id         String          @id @default(uuid())
+  studyJobId String
+  studyJob   StudyJob        @relation(fields: [studyJobId], references: [id], onDelete: Cascade)
+  conceptId  String
+  concept    Concept         @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  question   String
+  answer     String
+  difficulty quiz_difficulty
+
+  @@index([studyJobId])
+  @@index([conceptId])
+}

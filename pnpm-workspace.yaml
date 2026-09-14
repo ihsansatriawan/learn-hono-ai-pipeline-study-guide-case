@@ -1,0 +1,12 @@
+onlyBuiltDependencies:
+  - esbuild
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+  workerd: true
+minimumReleaseAgeExclude:
+  - '@prisma/orm-family-sql@8.0.0-rc.9'
+  - '@prisma/orm-framework@8.0.0-rc.9'
+  - '@prisma/orm-postgres@8.0.0-rc.9'
+  - '@prisma/orm-target-postgres@8.0.0-rc.9'
+  - '@prisma/orm-toolchain@8.0.0-rc.9'
