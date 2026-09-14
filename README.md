@@ -18,6 +18,97 @@ Dua diagram menjelaskan sistem ini lebih cepat daripada prosa — buka berkasnya
 | [docs/diagrams/architecture.html](./docs/diagrams/architecture.html) | Komponen apa saja yang ada dan bagaimana mereka terhubung |
 | [docs/diagrams/happy-flow.html](./docs/diagrams/happy-flow.html) | Apa yang terjadi, berurutan, dari `POST /jobs` sampai guide terbaca |
 
+## Setup
+
+Butuh ~5 menit, sekali saja.
+
+### Prasyarat
+
+| Kebutuhan | Versi | Catatan |
+| --- | --- | --- |
+| Node.js | **22.18+** | `.nvmrc` menunjuk 22.22.2. Wajib diperiksa lebih dulu — lihat catatan di bawah |
+| pnpm | 11.22+ | `package.json` akan mengunduhnya sendiri lewat `devEngines` bila perlu |
+| Docker + Compose | mana saja yang aktual | Hanya untuk PostgreSQL dan Redis; API dan worker jalan di mesin Anda |
+| Kunci API model | — | Penyedia apa pun yang OpenAI-compatible (OpenRouter, OpenAI, dsb.) |
+
+> **Periksa versi Node sebelum apa pun.** Di Node 20, `pnpm` **gagal sebelum menyentuh proyek ini**
+> dengan `ERR_UNKNOWN_BUILTIN_MODULE: No such built-in module: node:sqlite`. Pesannya menunjuk ke
+> pnpm, bukan ke versi Node, jadi mudah disalahartikan sebagai instalasi pnpm yang rusak.
+>
+> ```bash
+> nvm use          # membaca .nvmrc
+> node -v          # harus v22.18.0 atau lebih baru
+> ```
+
+### Langkah
+
+```bash
+# 1. Dependensi
+pnpm install
+
+# 2. Konfigurasi — isi OPENAI_API_KEY, dan OPENAI_BASE_URL bila bukan OpenAI resmi
+cp .env.example .env
+
+# 3. PostgreSQL + Redis
+docker compose up -d
+
+# 4. Kontrak Prisma (tipe + metadata runtime dari prisma/schema.prisma)
+pnpm contract:emit
+
+# 5. Bikin tabelnya
+pnpm db:init
+```
+
+Langkah 4 dan 5 aman diulang: `db:init` pada database yang sudah ada menerapkan nol operasi dan
+tetap sukses, jadi tidak perlu takut menjalankannya dua kali.
+
+Port host sengaja berbeda dari proyek lain di folder yang sama (`hono-prisma-bullmq` memakai
+55432/6380/3000, `feedback-pipeline-api` memakai 55433/6381/3000), supaya ketiganya bisa hidup
+bersamaan:
+
+| Layanan | Host | Container |
+| --- | --- | --- |
+| PostgreSQL | `localhost:55434` | `5432` |
+| Redis | `localhost:6382` | `6379` |
+| API | `localhost:3100` | — |
+
+### Menjalankan
+
+Dua proses, dua terminal:
+
+```bash
+pnpm dev          # terminal 1 — API di :3100
+pnpm worker:dev   # terminal 2 — worker
+```
+
+Keduanya memvalidasi environment saat boot dan **menolak start** kalau ada yang kurang, alih-alih
+gagal diam-diam di tengah job.
+
+### Memastikan setup benar-benar berhasil
+
+```bash
+pnpm db:verify                      # "Database schema satisfies contract"
+curl localhost:3100/health          # {"ok":true}
+pnpm happy-flow                     # 15 assersi lulus, ~25 detik
+```
+
+`pnpm happy-flow` adalah pemeriksaan terkuat: ia benar-benar memanggil model, menulis ke database,
+dan membaca hasilnya kembali. Kalau ini hijau, seluruh rantai bekerja.
+
+### Kalau ada yang salah
+
+| Gejala | Penyebab | Perbaikan |
+| --- | --- | --- |
+| `pnpm` gagal dengan `node:sqlite` | Node di bawah 22 | `nvm use`, lalu ulangi |
+| Boot melempar `Konfigurasi environment tidak valid` | `.env` belum lengkap | Isi variabel yang disebut pesannya |
+| Semua endpoint yang menyentuh database membalas `500` | Container mati (Docker restart, mesin reboot) | `docker ps` untuk memastikan, lalu `docker compose up -d` |
+| `POST /jobs` membalas `503` | Redis mati | `docker compose up -d` — pembacaan `GET` tetap jalan selama ini |
+| Job diam di `PENDING` | Worker tidak berjalan | Nyalakan `pnpm worker:dev` |
+| `docker compose up -d` menggantung tanpa keluaran apa pun | Sedang mencoba menarik image dari registry | Kalau image `postgres:16` dan `redis:7` sudah ada lokal: `docker compose up -d --pull never` |
+
+Setelah mengubah `prisma/schema.prisma`: `pnpm contract:emit`, lalu
+`pnpm exec prisma db update --dry-run` untuk meninjau, baru `pnpm db:update`.
+
 ## Alur permintaan
 
 ```text
@@ -146,39 +237,6 @@ Lihat [ADR-0001](./docs/adr/0001-klasifikasi-kegagalan-permanen-vs-transient.md)
 | Anvia (`@anvia/core`, `@anvia/openai`) | Pipeline berlangkah + keluaran terstruktur |
 | temporal-polyfill | Global `Temporal` yang dibutuhkan codec waktu Prisma 8 |
 
-## Menjalankan
-
-Butuh Node.js **22.18 atau lebih baru** (`.nvmrc` menunjuk 22.22.2), pnpm, Docker Compose, dan
-kunci API penyedia OpenAI-compatible.
-
-```bash
-pnpm install
-cp .env.example .env       # lalu isi OPENAI_API_KEY
-docker compose up -d
-pnpm contract:emit
-pnpm db:init
-```
-
-Port host sengaja berbeda dari proyek lain di folder yang sama (`hono-prisma-bullmq` memakai
-55432/6380/3000, `feedback-pipeline-api` memakai 55433/6381/3000), supaya semuanya bisa hidup
-bersamaan:
-
-| Layanan | Host | Container |
-| --- | --- | --- |
-| PostgreSQL | `localhost:55434` | `5432` |
-| Redis | `localhost:6382` | `6379` |
-| API | `localhost:3100` | — |
-
-Jalankan dua proses di dua terminal:
-
-```bash
-pnpm dev          # API
-pnpm worker:dev   # worker
-```
-
-Keduanya memvalidasi environment saat boot dan menolak start kalau ada yang kurang, alih-alih
-gagal diam-diam di tengah job.
-
 ## Demo alur penuh
 
 ```bash
@@ -233,9 +291,6 @@ Materi ujinya ada di `scripts/fixtures/`:
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm demo` | Demonstrasi alur penuh |
 | `pnpm happy-flow` | Test berassersi untuk jalur sukses (TC-HF) |
-
-Setelah mengubah `prisma/schema.prisma`: `pnpm contract:emit`, lalu
-`pnpm exec prisma db update --dry-run` untuk meninjau, baru `pnpm db:update`.
 
 ## Batasan yang diketahui
 
