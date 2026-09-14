@@ -11,6 +11,13 @@ Bahasa domainnya ada di [CONTEXT.md](./CONTEXT.md); keputusan yang tidak jelas d
 dijelaskan di [docs/adr/](./docs/adr/); skenario uji lengkap beserta hasil nyatanya ada di
 [docs/TEST-CASES.md](./docs/TEST-CASES.md).
 
+Dua diagram menjelaskan sistem ini lebih cepat daripada prosa — buka berkasnya di browser:
+
+| Diagram | Menjawab |
+| --- | --- |
+| [docs/diagrams/architecture.html](./docs/diagrams/architecture.html) | Komponen apa saja yang ada dan bagaimana mereka terhubung |
+| [docs/diagrams/happy-flow.html](./docs/diagrams/happy-flow.html) | Apa yang terjadi, berurutan, dari `POST /jobs` sampai guide terbaca |
+
 ## Alur permintaan
 
 ```text
@@ -190,6 +197,16 @@ melaporkannya alih-alih gagal.
 
 ## Menguji sendiri
 
+Jalur sukses punya test berassersi sendiri:
+
+```bash
+pnpm happy-flow
+```
+
+Satu materi dijalankan melewati seluruh pipeline, lalu 15 assersi memeriksa tiap jaminan di atas —
+`202` tanpa menunggu, `guide` null sampai `COMPLETED`, konsep berurutan, nol soal yatim, dan jumlah
+konsep di database sama dengan yang dikembalikan API. Langkahnya sejajar dengan diagram happy flow.
+
 [docs/TEST-CASES.md](./docs/TEST-CASES.md) memuat 29 skenario dengan perintah siap salin dan hasil
 yang diharapkan — termasuk yang tidak dicakup `pnpm demo`: paginasi cursor, retry transient, Redis
 mati, worker mati di tengah pekerjaan, constraint database, dan ketahanan terhadap prompt injection.
@@ -215,6 +232,7 @@ Materi ujinya ada di `scripts/fixtures/`:
 | `pnpm db:verify` | Cocokkan database dengan kontrak |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm demo` | Demonstrasi alur penuh |
+| `pnpm happy-flow` | Test berassersi untuk jalur sukses (TC-HF) |
 
 Setelah mengubah `prisma/schema.prisma`: `pnpm contract:emit`, lalu
 `pnpm exec prisma db update --dry-run` untuk meninjau, baru `pnpm db:update`.

@@ -1,7 +1,8 @@
 # Test Cases
 
 Skenario uji manual untuk Study Guide Pipeline API, lengkap dengan perintah yang bisa disalin dan
-hasil yang diharapkan.
+hasil yang diharapkan. Jalur suksesnya digambar di
+[docs/diagrams/](./diagrams/) dan diuji otomatis lewat `pnpm happy-flow`.
 
 Angka pada "hasil terukur" berasal dari eksekusi nyata pada 12–13 September 2026 dengan model
 `openai/gpt-5.6-luna` lewat OpenRouter. **Keluaran model tidak deterministik**: jumlah konsep dan
@@ -67,6 +68,85 @@ watch_job() {
 | `scripts/fixtures/source-thin.txt` | Catatan singkat `let`/`const`, 778 karakter, **dua** gagasan | Materi tipis tapi sah |
 | `scripts/fixtures/source-noise.txt` | Struk belanja, 1.177 karakter, nol gagasan | Kegagalan permanen |
 | `scripts/fixtures/source-injection.txt` | Transkrip event loop + serangan prompt injection | Ketahanan terhadap injeksi |
+
+---
+
+# Happy Flow
+
+Jalur sukses digambar di **[docs/diagrams/happy-flow.html](./diagrams/happy-flow.html)** (urutan waktu)
+dan **[docs/diagrams/architecture.html](./diagrams/architecture.html)** (komponen). Bagian ini adalah
+test case yang menjalankan jalur itu dan memeriksanya.
+
+### TC-HF · Happy flow end-to-end
+
+```bash
+pnpm happy-flow
+```
+
+Prasyarat: `docker compose up -d`, lalu `pnpm dev` dan `pnpm worker:dev` hidup di dua terminal.
+
+**Diharapkan** — seluruh assersi lulus dan skrip keluar dengan kode 0.
+
+**Hasil terukur** — 15 assersi lulus, 0 gagal, selesai dalam ~23 detik:
+
+```
+TC-HF · Happy flow — http://localhost:3100
+
+[1] POST /jobs — mengantre materi
+  PASS  kode 202 Accepted (202)
+  PASS  status awal PENDING (PENDING)
+  PASS  sourceText tidak dikembalikan ()
+      job ab7ae923-1b00-418f-966a-33922948ceaf
+[2] Baris tersimpan sebelum worker selesai
+  PASS  baris ada di PostgreSQL (PROCESSING)
+[3] guide bernilai null selama belum COMPLETED
+  PASS  guide masih null ()
+[4] Menunggu pipeline empat langkah
+      t+0s   PROCESSING
+      t+23s  COMPLETED
+  PASS  status akhir COMPLETED (COMPLETED)
+[5] Struktur guide konsisten
+      8 konsep, 8 soal
+  PASS  guide terisi (ya)
+  PASS  failureReason kosong (ya)
+  PASS  completedAt terisi (ya)
+  PASS  jumlah konsep minimal 2 (ya)
+  PASS  order berurutan dari 1 (ya)
+  PASS  soal yatim (0)
+  PASS  tiap konsep punya soal (ya)
+[6] Hasil ada di PostgreSQL, bukan hanya di memori proses
+  PASS  jumlah konsep database = respons (8)
+[7] Job muncul di GET /jobs beserta guide-nya
+  PASS  ada di daftar dengan guide (ya)
+
+  15 assersi lulus, 0 gagal.
+```
+
+### Peta langkah: diagram ↔ yang diperiksa
+
+Setiap pesan pada diagram sequence punya padanannya di sini. Tujuh pesan bersifat internal —
+client tidak bisa melihatnya langsung, jadi yang diperiksa adalah jejak yang ditinggalkannya.
+
+| # | Pesan di diagram | Pelaku | Diperiksa lewat | Jaminan yang diuji |
+| --- | --- | --- | --- | --- |
+| 1 | `POST /jobs` | Client → API | Langkah [1] | `202`, bukan menunggu pipeline selesai |
+| 2 | `INSERT PENDING` | API → PostgreSQL | Langkah [2] (psql) | Permintaan tersimpan sebelum dikerjakan |
+| 3 | `ENQUEUE ID` | API → Redis | Langkah [4] berjalan | Payload antrean hanya id; worker menemukan pekerjaannya |
+| 4 | `202 PENDING` | API → Client | Langkah [1] | Balasan datang tanpa menunggu model |
+| 5 | `DELIVER` | Redis → Worker | Langkah [4] `PROCESSING` | Antrean benar-benar mengantar |
+| 6 | `SET PROCESSING` | Worker → PostgreSQL | Langkah [4] | Client bisa membedakan "antre" dari "dikerjakan" |
+| 7 | `3x MODEL CALL` | Worker (self) | Langkah [5] isi guide | Tiga panggilan model sungguhan, bukan mock |
+| 8 | `1 TRANSAKSI` | Worker → PostgreSQL | Langkah [5] + [6] | Konsep, soal, dan status `COMPLETED` mendarat bersama |
+| 9 | `GET /jobs/:id` | Client → API | Langkah [5] | Pembacaan hasil |
+| 10 | `SELECT` | API → PostgreSQL | Langkah [6] | Hasil dibaca dari database, bukan memori |
+| 11 | `CONCEPT + QUIZ` | PostgreSQL → API | Langkah [5] | Relasi konsep–soal utuh (nol soal yatim) |
+| 12 | `200 + GUIDE` | API → Client | Langkah [5] + [7] | Guide lengkap, `failureReason` null |
+
+Langkah [3] menguji sesuatu yang **tidak** ada di diagram: bahwa `guide` bernilai `null` sepanjang
+status belum `COMPLETED`. Itu justru jaminan yang paling mudah dilanggar kalau suatu saat hasil
+ditulis bertahap alih-alih dalam satu transaksi.
+
+Versi manualnya, langkah demi langkah dengan `curl`, ada di TC-A1 sampai TC-A5 di bawah.
 
 ---
 
@@ -694,6 +774,7 @@ perlu dinyatakan eksplisit di `LEVEL_GUIDANCE` pada `src/pipeline/prompts.ts`.
 
 | ID | Skenario | Hasil yang diharapkan | Otomatis di `pnpm demo`? |
 | --- | --- | --- | --- |
+| HF | Happy flow end-to-end | 15 assersi lulus (`pnpm happy-flow`) | sebagian |
 | A1 | Mengantre job | `202` + `PENDING` | ya |
 | A2 | Job selesai | `PROCESSING` → `COMPLETED` (~20–30s) | ya |
 | A3 | Membaca guide | Konsep berurutan, soal menunjuk konsep sah | ya |

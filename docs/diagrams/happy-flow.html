@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Happy Flow — Study Guide Pipeline API</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #eb6c36;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 900px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Sequence · Happy Flow</p>
+    <h1>Satu materi belajar, dari 202 Accepted sampai guide tersimpan</h1>
+
+    <svg viewBox="0 32 1000 728" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sg-happy-title sg-happy-desc">
+      <title id="sg-happy-title">Happy flow Study Guide Pipeline API</title>
+      <desc id="sg-happy-desc">Urutan waktu jalur sukses: client mengirim materi, API menyimpan job PENDING dan mengantrekannya lalu langsung membalas 202, worker mengambil job dari Redis, menjalankan tiga panggilan model, menulis seluruh study guide dalam satu transaksi, dan permintaan GET berikutnya mengembalikan guide itu.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+      <!-- LIFELINES -->
+      <line x1="96"  y1="128" x2="96"  y2="688" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="280" y1="128" x2="280" y2="688" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="464" y1="128" x2="464" y2="688" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="648" y1="128" x2="648" y2="688" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="832" y1="128" x2="832" y2="688" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+
+      <!-- ACTIVATION BARS -->
+      <rect x="276" y="192" width="8" height="120" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <rect x="276" y="552" width="8" height="104" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <rect x="644" y="272" width="8" height="80"  fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <rect x="828" y="352" width="8" height="176" fill="rgba(235,108,54,0.10)" stroke="#eb6c36" stroke-width="0.8"/>
+      <rect x="460" y="232" width="8" height="16"  fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <rect x="460" y="392" width="8" height="16"  fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <rect x="460" y="512" width="8" height="16"  fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <rect x="460" y="592" width="8" height="32"  fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+
+      <!-- MESSAGES -->
+
+      <!-- 1 -->
+      <line x1="96" y1="192" x2="276" y2="192" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <rect x="160" y="172" width="56" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="188" y="181" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">POST /jobs</text>
+
+      <!-- 2 -->
+      <line x1="284" y1="232" x2="460" y2="232" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="330" y="212" width="84" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="372" y="221" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">INSERT PENDING</text>
+
+      <!-- 3 -->
+      <line x1="284" y1="272" x2="644" y2="272" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="340" y="252" width="64" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="372" y="261" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ENQUEUE ID</text>
+
+      <!-- 4 -->
+      <line x1="276" y1="312" x2="96" y2="312" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+      <rect x="156" y="292" width="64" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="188" y="301" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">202 PENDING</text>
+
+      <!-- 5 -->
+      <line x1="652" y1="352" x2="828" y2="352" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="716" y="332" width="48" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="740" y="341" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">DELIVER</text>
+
+      <!-- 6 -->
+      <line x1="828" y1="392" x2="468" y2="392" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="516" y="372" width="88" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="560" y="381" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SET PROCESSING</text>
+
+      <!-- 7 self-call -->
+      <path d="M 836,432 H 864 Q 872,432 872,440 V 464 Q 872,472 864,472 H 840"
+            fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="880" y="446" width="80" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="884" y="455" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.06em">3x MODEL CALL</text>
+
+      <!-- 8 -->
+      <line x1="828" y1="512" x2="468" y2="512" stroke="#eb6c36" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+      <rect x="516" y="492" width="88" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="560" y="501" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">1 TRANSAKSI</text>
+
+      <!-- 9 -->
+      <line x1="96" y1="552" x2="276" y2="552" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <rect x="154" y="532" width="68" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="188" y="541" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">GET /jobs/:id</text>
+
+      <!-- 10 -->
+      <line x1="284" y1="592" x2="460" y2="592" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="344" y="572" width="56" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="372" y="581" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SELECT</text>
+
+      <!-- 11 -->
+      <line x1="460" y1="624" x2="284" y2="624" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+      <rect x="330" y="604" width="84" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="372" y="613" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CONCEPT + QUIZ</text>
+
+      <!-- 12 -->
+      <line x1="276" y1="656" x2="96" y2="656" stroke="#eb6c36" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+      <rect x="152" y="636" width="72" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="188" y="645" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">200 + GUIDE</text>
+
+      <!-- ACTORS -->
+      <rect x="20" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+      <rect x="20" y="72" width="152" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="96" y="100" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Client</text>
+      <text x="96" y="116" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">curl</text>
+
+      <rect x="204" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+      <rect x="204" y="72" width="152" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="280" y="100" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Hono API</text>
+      <text x="280" y="116" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">:3100</text>
+
+      <rect x="388" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+      <rect x="388" y="72" width="152" height="56" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+      <text x="464" y="100" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">PostgreSQL</text>
+      <text x="464" y="116" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">studyJob</text>
+
+      <rect x="572" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+      <rect x="572" y="72" width="152" height="56" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+      <text x="648" y="100" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Redis · BullMQ</text>
+      <text x="648" y="116" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">study-guide-queue</text>
+
+      <rect x="756" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+      <rect x="756" y="72" width="152" height="56" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+      <text x="832" y="100" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Worker</text>
+      <text x="832" y="116" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">anvia pipeline</text>
+
+      <!-- LEGEND -->
+      <line x1="32" y1="712" x2="968" y2="712" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <text x="32" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+
+      <line x1="136" y1="732" x2="164" y2="732" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <text x="176" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">PANGGILAN</text>
+
+      <line x1="304" y1="732" x2="332" y2="732" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+      <text x="344" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">BALASAN</text>
+
+      <line x1="472" y1="732" x2="500" y2="732" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <text x="512" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">HTTP CLIENT</text>
+
+      <line x1="656" y1="732" x2="684" y2="732" stroke="#eb6c36" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+      <text x="696" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">JAMINAN UTAMA</text>
+
+      <rect x="852" y="726" width="8" height="12" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <text x="872" y="736" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace">AKTIVASI</text>
+    </svg>
+  </div>
+</body>
+</html>
